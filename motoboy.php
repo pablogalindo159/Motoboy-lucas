@@ -53,7 +53,7 @@ topo('Minhas entregas');
 $sacasColetadas = count(array_filter($sacas, fn($x) => $x['coletada']));
 $corRota = $rota['cor'] ?? null;
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=3">
+<link rel="stylesheet" href="assets/sacas.css?v=4">
 <div class="app-moto">
   <header class="moto-topo">
     <img src="assets/icone.svg" alt="" width="40" height="40" class="icone-topo">
@@ -83,7 +83,7 @@ $corRota = $rota['cor'] ?? null;
       // fases: ir ao CD -> coletar caixas -> entregas
       $fase = 'entregas';
       if ($sacas && !$rota['saida_cd']) $fase = $rota['chegada_cd'] ? 'coleta' : 'ir_cd';
-      $estiloCor = '--cor-rota:' . e($corRota ?: '#F2B705') . ';--texto-rota:' . texto_sobre($corRota ?: '#F2B705');
+      $estiloCor = '--cor-rota:' . e($corRota ?: '#8CF20A') . ';--texto-rota:' . texto_sobre($corRota ?: '#8CF20A');
     ?>
     <?php if ($fase === 'ir_cd'): ?>
     <section class="chegada" style="<?= $estiloCor ?>">

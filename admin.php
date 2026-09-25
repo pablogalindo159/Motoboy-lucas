@@ -9,7 +9,7 @@ $linkTv = str_replace('//tv.php', '/tv.php', $linkTv);
 $data = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['data'] ?? '') ? $_GET['data'] : date('Y-m-d');
 topo('Painel', 'painel', true);
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=3">
+<link rel="stylesheet" href="assets/sacas.css?v=4">
 <div class="painel">
   <aside class="lateral">
     <form class="filtro-data">
@@ -35,7 +35,7 @@ topo('Painel', 'painel', true);
 
 <script>
 const DATA = <?= json_encode($data) ?>;
-const mapa = L.map('mapa').setView([<?= MAPA_LAT ?>, <?= MAPA_LNG ?>], 13);
+const mapa = L.map('mapa', { preferCanvas: true }).setView([<?= MAPA_LAT ?>, <?= MAPA_LNG ?>], 13);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapa);
 
 const camadas = L.layerGroup().addTo(mapa);
@@ -53,7 +53,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 function corTexto(hex) {
   const h = hex.replace('#', ''); if (h.length !== 6) return '#fff';
   const [r, g, b] = [0, 2, 4].map(i => parseInt(h.substr(i, 2), 16));
-  return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#1B2B34' : '#fff';
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#111111' : '#fff';
 }
 const iniciais = n => n.split(' ').filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase();
 
@@ -95,7 +95,9 @@ async function carregar() {
     m.paradas.forEach(p => {
       if (!p.lat) return;
       const ll = [+p.lat, +p.lng]; limites.push(ll);
-      L.marker(ll, { icon: L.divIcon({ className: '', html: `<div class="pino ${p.status}" style="--cor:${cor}">${p.numero}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] }) })
+      const feito = p.status !== 'pendente', proxima = p === prox;
+      L.circleMarker(ll, { radius: proxima ? 8 : 4.5, weight: proxima ? 3 : 1, color: proxima ? '#000' : 'rgba(0,0,0,.45)',
+        fillColor: feito ? (p.status === 'entregue' ? '#1E7F47' : '#B8352A') : cor, fillOpacity: feito ? .55 : .95 })
         .addTo(camadas)
         .bindPopup(`<b>${esc(m.nome)} · parada ${p.numero}</b><br>${esc(p.endereco)}, ${esc(p.numero_casa)}<br>${p.pacotes} pacote(s) — ${p.status === 'pendente' ? 'pendente' : (p.status === 'entregue' ? 'entregue' : 'não entregue')}${p.finalizado_em ? ' às ' + p.finalizado_em.substr(11, 5) : ''}`);
     });
@@ -105,7 +107,7 @@ async function carregar() {
     let marcador = null;
     if (m.lat) {
       const ll = [+m.lat, +m.lng]; limites.push(ll);
-      marcador = L.marker(ll, { zIndexOffset: 1000, icon: L.divIcon({ className: '', html: `<div class="moto ${m.minutos_sem_sinal !== null && m.minutos_sem_sinal <= 2 ? 'vivo' : ''}" style="--cor:${cor};color:${txt};border-color:#1B2B34">🛵 ${esc(iniciais(m.nome))}</div>`, iconSize: [70, 30], iconAnchor: [35, 15] }) })
+      marcador = L.marker(ll, { zIndexOffset: 1000, icon: L.divIcon({ className: '', html: `<div class="moto ${m.minutos_sem_sinal !== null && m.minutos_sem_sinal <= 2 ? 'vivo' : ''}" style="--cor:${cor};color:${txt};border-color:#111111">🛵 ${esc(iniciais(m.nome))}</div>`, iconSize: [70, 30], iconAnchor: [35, 15] }) })
         .addTo(camadas).bindPopup(`<b>${esc(m.nome)}</b> ${esc(m.placa || '')}<br>${ent} de ${total} entregas · faltam ${faltam}`);
     }
 
@@ -118,7 +120,7 @@ async function carregar() {
       <div class="contagem"><span><b>${ent}</b> entregues</span><span><b>${faltam}</b> faltam</span>${falha ? `<span><b>${falha}</b> sem sucesso</span>` : ''}</div>
       <div class="progresso"><span style="width:${pct}%"></span></div>
       ${m.sacas ? `<small>${etapa(m)}</small>` : ''}
-      <small>${pacEnt} de ${pac} pacotes${prox ? ` · próxima: parada ${prox.numero}, ${esc(prox.endereco)}` : (total ? ' · rota concluída' : '')}</small>`;
+      <small>${pacEnt} de ${pac} pacotes${prox ? ` · próxima: entrega ${prox.entrega ?? prox.numero}, ${esc(prox.endereco)}` : (total ? ' · rota concluída' : '')}</small>`;
     c.onclick = () => {
       focado = m.id;
       if (marcador) { mapa.setView(marcador.getLatLng(), 16); marcador.openPopup(); }

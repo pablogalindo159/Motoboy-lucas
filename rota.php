@@ -129,9 +129,9 @@ topo('Rota ' . $rota['motoboy'], 'rotas', true);
   </form>
 </div>
 
-<link rel="stylesheet" href="assets/sacas.css?v=3">
+<link rel="stylesheet" href="assets/sacas.css?v=4">
 <?php if ($sacas): $col = count(array_filter($sacas, fn($x) => $x['coletada'])); ?>
-<div class="sacas-admin" style="--cor-rota:<?= e($rota['cor'] ?: '#F2B705') ?>;--texto-rota:<?= texto_sobre($rota['cor'] ?: '#F2B705') ?>">
+<div class="sacas-admin" style="--cor-rota:<?= e($rota['cor'] ?: '#8CF20A') ?>;--texto-rota:<?= texto_sobre($rota['cor'] ?: '#8CF20A') ?>">
   <div class="faixa">Sacas: <?= $col ?> de <?= count($sacas) ?> coletadas · <?= array_sum(array_column($sacas, 'quantidade')) ?> pacotes</div>
   <div class="chips">
     <?php foreach ($sacas as $sc): ?><span class="chip <?= $sc['coletada'] ? 'ok' : '' ?>" title="<?= $sc['coletada'] ? 'Coletada às ' . hora_br($sc['coletada_em']) : 'Aguardando coleta' ?>"><b><?= (int)$sc['caixa'] ?></b> <?= (int)$sc['quantidade'] ?></span><?php endforeach; ?>
@@ -226,7 +226,7 @@ paradas.forEach(p => {
 const cd = <?= json_encode(cd_posicao()) ?>;
 if (cd) { L.marker(cd, { icon: L.divIcon({ className: '', html: '<div class="mapa-cd">CD</div>', iconSize: [34, 24], iconAnchor: [17, 12] }) }).addTo(mapa); pontos.push(cd); }
 const linha = paradas.filter(p => p.lat && p.status === 'pendente').map(p => [p.lat, p.lng]);
-if (linha.length) L.polyline(cd ? [cd, ...linha] : linha, { color: '#1B2B34', weight: 2, opacity: .45, dashArray: '4 6' }).addTo(mapa);
+if (linha.length) L.polyline(cd ? [cd, ...linha] : linha, { color: '#111111', weight: 2, opacity: .45, dashArray: '4 6' }).addTo(mapa);
 if (pontos.length) mapa.fitBounds(pontos, { padding: [30, 30], maxZoom: 16 });
 </script>
 <?php rodape();

@@ -25,9 +25,9 @@ garantir_schema_sacas();
 // Cor do texto (preto ou branco) que dá leitura em cima de uma cor de fundo
 function texto_sobre(string $hex): string {
     $hex = ltrim($hex, '#');
-    if (strlen($hex) !== 6) return '#1B2B34';
+    if (strlen($hex) !== 6) return '#111111';
     [$r, $g, $b] = array_map('hexdec', str_split($hex, 2));
-    return (0.299 * $r + 0.587 * $g + 0.114 * $b) > 150 ? '#1B2B34' : '#FFFFFF';
+    return (0.299 * $r + 0.587 * $g + 0.114 * $b) > 150 ? '#111111' : '#FFFFFF';
 }
 
 function sem_acento(string $s): string {

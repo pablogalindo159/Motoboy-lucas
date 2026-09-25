@@ -1,16 +1,18 @@
-/* Paleta inspirada em sinalização de trânsito: asfalto, amarelo de placa, verde/vermelho de status */
+/* Paleta NetPoint: preto, verde neon e branco. Verde escuro e vermelho só para status (entregue / não entregue). */
 :root {
-  --asfalto: #1B2B34;
-  --asfalto-2: #2E4350;
-  --fundo: #EEF1F0;
+  --asfalto: #111111;
+  --asfalto-2: #2B2B2B;
+  --fundo: #F3F4F1;
   --papel: #FFFFFF;
-  --linha: #CBD3D1;
-  --suave: #5E6E76;
-  --placa: #F2B705;
+  --linha: #D6D9D3;
+  --suave: #5F665F;
+  --placa: #8CF20A;
   --marca: #8CF20A;
+  --marca-escura: #3F8F00;
+  --alerta: #F2B705;
   --verde: #1E7F47;
   --vermelho: #B8352A;
-  --azul: #1F5FA8;
+  --azul: #2E7D00;
   --raio: 10px;
   --fonte: 'Barlow', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --fonte-placa: 'Barlow Semi Condensed', 'Arial Narrow', system-ui, sans-serif;
@@ -55,7 +57,7 @@ main.cheio { padding: 0; }
 .form .linha label { flex: 1; }
 .form .linha label.curto { flex: 0 0 110px; }
 input, select, textarea { font: inherit; color: inherit; padding: .6rem .7rem; border: 1px solid var(--linha); border-radius: 8px; background: #fff; width: 100%; }
-input:focus, select:focus, textarea:focus { border-color: var(--asfalto); outline: none; box-shadow: 0 0 0 3px rgba(242,183,5,.45); }
+input:focus, select:focus, textarea:focus { border-color: var(--asfalto); outline: none; box-shadow: 0 0 0 3px rgba(140,242,10,.5); }
 input[type=radio] { width: auto; }
 textarea { resize: vertical; }
 
@@ -63,8 +65,8 @@ textarea { resize: vertical; }
   padding: .6rem 1rem; border-radius: 8px; border: 1px solid var(--linha); background: #fff; color: var(--asfalto); }
 .btn:hover { border-color: var(--asfalto); }
 .btn:disabled { opacity: .5; cursor: wait; }
-.btn.primario { background: var(--asfalto); color: #fff; border-color: var(--asfalto); }
-.btn.primario:hover { background: var(--asfalto-2); }
+.btn.primario { background: #000; color: var(--marca); border-color: #000; }
+.btn.primario:hover { background: var(--asfalto-2); border-color: var(--asfalto-2); }
 .btn.sucesso { background: var(--verde); color: #fff; border-color: var(--verde); }
 .btn.perigo { color: var(--vermelho); border-color: #E3B8B3; }
 .btn.perigo:hover { border-color: var(--vermelho); }
@@ -75,10 +77,10 @@ textarea { resize: vertical; }
 
 .aviso { padding: .8rem 1rem; border-radius: 8px; margin-bottom: 1rem; border-left: 5px solid var(--verde); background: #E3F2E8; }
 .aviso.erro { border-color: var(--vermelho); background: #F8E3E0; }
-.aviso.alerta { border-color: var(--placa); background: #FDF3D3; }
+.aviso.alerta { border-color: var(--alerta); background: #FDF3D3; }
 main.cheio > .aviso { margin: .8rem; }
 .dica { color: var(--suave); font-size: .9rem; margin: .4rem 0; }
-.txt-alerta { color: #946F00; font-weight: 600; }
+.txt-alerta { color: #8A6400; font-weight: 600; }
 .vazio { color: var(--suave); text-align: center; padding: 1.5rem; }
 
 .tabela-wrap { overflow-x: auto; background: var(--papel); border: 1px solid var(--linha); border-radius: var(--raio); }
@@ -91,7 +93,7 @@ main.cheio > .aviso { margin: .8rem; }
 .acoes form { margin: 0; }
 
 .progresso { height: 8px; background: #DCE3E1; border-radius: 99px; overflow: hidden; min-width: 90px; }
-.progresso span { display: block; height: 100%; background: var(--verde); transition: width .4s; }
+.progresso span { display: block; height: 100%; background: var(--marca); box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); transition: width .4s; }
 .progresso.grosso { height: 10px; border-radius: 0; }
 
 .selo { display: inline-block; padding: .15rem .55rem; border-radius: 99px; font-size: .8rem; font-weight: 600; background: #E3E8E7; }
@@ -201,7 +203,7 @@ main.cheio > .aviso { margin: .8rem; }
 .bairro { margin: 0; color: var(--suave); }
 .pacotes { clear: both; margin: .9rem 0 0; font-size: 1.1rem; }
 .pacotes b { font-family: var(--fonte-placa); font-size: 1.6rem; }
-.obs { background: #FDF3D3; border-left: 4px solid var(--placa); padding: .6rem .8rem; border-radius: 6px; margin: .8rem 0 0; }
+.obs { background: #FDF3D3; border-left: 4px solid var(--alerta); padding: .6rem .8rem; border-radius: 6px; margin: .8rem 0 0; }
 .navegar, .confirmar { display: grid; grid-template-columns: 2fr 1fr; gap: .6rem; margin-top: 1rem; }
 .confirmar { grid-template-columns: 1fr 1fr; }
 .proxima > .btn.largo { margin-top: .9rem; }
@@ -217,5 +219,5 @@ main.cheio > .aviso { margin: .8rem; }
 .lista-moto li small { display: block; }
 
 dialog { border: 0; border-radius: 14px; padding: 1.2rem; width: min(92vw, 420px); }
-dialog::backdrop { background: rgba(27,43,52,.6); }
+dialog::backdrop { background: rgba(0,0,0,.65); }
 dialog .form label { flex-direction: row; align-items: center; gap: .6rem; font-size: 1.05rem; padding: .3rem 0; }
