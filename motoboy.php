@@ -1,5 +1,6 @@
 <?php
 require __DIR__ . '/config.php';
+require __DIR__ . '/sacas.php';
 $u = exigir('motoboy');
 $hoje = date('Y-m-d');
 
@@ -12,11 +13,14 @@ $rotas = $s->fetchAll();
 // rota escolhida, ou a primeira que ainda tem entrega pendente
 $rota = null;
 foreach ($rotas as $r) if ((int)($_GET['rota'] ?? 0) === (int)$r['id']) $rota = $r;
-if (!$rota) foreach ($rotas as $r) if ($r['pendentes'] > 0) { $rota = $r; break; }
+if (!$rota) foreach ($rotas as $r) if ($r['pendentes'] > 0 || (int)$r['total'] === 0) { $rota = $r; break; }
 if (!$rota && $rotas) $rota = end($rotas);
 
-$paradas = [];
+$paradas = []; $sacas = [];
 if ($rota) {
+    $s = db()->prepare("SELECT * FROM sacas WHERE rota_id = ? ORDER BY caixa");
+    $s->execute([$rota['id']]);
+    $sacas = $s->fetchAll();
     $s = db()->prepare("SELECT * FROM paradas WHERE rota_id = ? ORDER BY numero, id");
     $s->execute([$rota['id']]);
     $paradas = $s->fetchAll();
@@ -46,7 +50,10 @@ function link_rota_completa(array $pendentes): string {
 }
 
 topo('Minhas entregas');
+$sacasColetadas = count(array_filter($sacas, fn($x) => $x['coletada']));
+$corRota = $rota['cor'] ?? null;
 ?>
+<link rel="stylesheet" href="assets/sacas.css?v=1">
 <div class="app-moto">
   <header class="moto-topo">
     <div>
@@ -71,6 +78,31 @@ topo('Minhas entregas');
       <button class="btn grande" onclick="location.reload()">Verificar de novo</button>
     </section>
   <?php else: ?>
+    <?php if ($sacas): $todas = $sacasColetadas === count($sacas); ?>
+    <details class="sacas" id="sacas" <?= $todas ? '' : 'open' ?> style="--cor-rota:<?= e($corRota ?: '#F2B705') ?>;--texto-rota:<?= texto_sobre($corRota ?: '#F2B705') ?>">
+      <summary>
+        <span class="cor-motoboy"><?= e($rota['descricao'] ?: 'Sua cor') ?></span>
+        <span class="titulo-sacas" id="sacas-titulo"><?= $todas ? 'Sacas coletadas' : 'Sacas para coletar' ?></span>
+        <span class="contador" id="sacas-cont"><?= $sacasColetadas ?>/<?= count($sacas) ?></span>
+      </summary>
+      <p class="dica">Toque em cada saca quando pegar. Total: <b><?= array_sum(array_column($sacas, 'quantidade')) ?></b> pacotes.</p>
+      <div class="grade-sacas">
+        <?php foreach ($sacas as $sc): ?>
+          <button type="button" class="saca <?= $sc['coletada'] ? 'coletada' : '' ?>" data-id="<?= $sc['id'] ?>" onclick="coletar(this)" aria-pressed="<?= $sc['coletada'] ? 'true' : 'false' ?>">
+            <b><?= (int)$sc['caixa'] ?></b><small><?= (int)$sc['quantidade'] ?> pct</small>
+          </button>
+        <?php endforeach; ?>
+      </div>
+    </details>
+    <?php endif; ?>
+
+    <?php if (!$paradas): ?>
+    <section class="vazio-moto">
+      <h1><?= $sacas ? 'Colete suas sacas' : 'Rota sem paradas' ?></h1>
+      <p>As paradas ainda não foram lançadas. Quando a loja lançar, elas aparecem aqui.</p>
+      <button class="btn grande" onclick="location.reload()">Verificar de novo</button>
+    </section>
+    <?php else: ?>
     <section class="placar">
       <div><b><?= $entregues ?></b><span>entregues</span></div>
       <div><b><?= count($pendentes) ?></b><span>faltam</span></div>
@@ -128,6 +160,7 @@ topo('Minhas entregas');
       </ol>
     </details>
     <?php endif; ?>
+    <?php endif; ?>
   <?php endif; ?>
 </div>
 
@@ -180,6 +213,24 @@ function naoEntregue(id) {
     if (m === 'Outro') m = f.outro.value.trim() || 'Outro';
     marcar(id, 'falhou', m);
   };
+}
+
+// ---- Coleta das sacas ----
+async function coletar(btn) {
+  btn.disabled = true;
+  try {
+    const r = await post({ acao: 'coletar_saca', saca_id: btn.dataset.id });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.erro || '');
+    btn.classList.toggle('coletada', j.coletada);
+    btn.setAttribute('aria-pressed', j.coletada ? 'true' : 'false');
+    document.getElementById('sacas-cont').textContent = j.coletadas + '/' + j.total;
+    document.getElementById('sacas-titulo').textContent = j.coletadas === j.total ? 'Sacas coletadas' : 'Sacas para coletar';
+    if (navigator.vibrate) navigator.vibrate(40);
+  } catch (e) {
+    alert('Não foi possível marcar a saca. Confira a internet e toque de novo.');
+  }
+  btn.disabled = false;
 }
 
 // ---- Localização: envia a cada 20 s ou quando andar mais de 30 m ----

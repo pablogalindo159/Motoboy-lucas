@@ -1,0 +1,39 @@
+/* Sacas de coleta: cada motoboy tem a cor da planilha de controle */
+.bolinha { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: .45rem; border: 1px solid rgba(0,0,0,.35); vertical-align: -1px; }
+
+/* celular do motoboy */
+.sacas { background: var(--papel); border-bottom: 1px solid var(--linha); }
+.sacas summary { display: flex; align-items: center; gap: .7rem; padding: .8rem 1rem; cursor: pointer; list-style: none;
+  background: var(--cor-rota); color: var(--texto-rota); border-bottom: 3px solid var(--asfalto); }
+.sacas summary::-webkit-details-marker { display: none; }
+.cor-motoboy { font-family: var(--fonte-placa); font-weight: 800; font-size: 1.05rem; padding: .15rem .55rem; border: 2px solid currentColor; border-radius: 6px; }
+.titulo-sacas { flex: 1; font-weight: 600; }
+.contador { font-family: var(--fonte-placa); font-weight: 800; font-size: 1.5rem; }
+.sacas .dica { padding: 0 1rem; margin-top: .8rem; }
+.grade-sacas { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: .55rem; padding: .4rem 1rem 1.1rem; }
+.saca { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 76px; cursor: pointer; font: inherit;
+  background: #fff; color: var(--asfalto); border: 3px solid var(--cor-rota); border-radius: 12px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+.saca b { font-family: var(--fonte-placa); font-size: 1.9rem; line-height: 1; }
+.saca small { font-size: .8rem; }
+.saca.coletada { background: var(--verde); border-color: var(--verde); color: #fff; box-shadow: none; }
+.saca.coletada small { color: #E3F2E8; }
+.saca.coletada b::before { content: '✓ '; font-size: 1.1rem; vertical-align: 4px; }
+.saca:disabled { opacity: .6; }
+
+/* admin: prévia da importação e rota */
+.previa-topo { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin-bottom: 1rem; }
+.previa-topo label { font-weight: 600; display: flex; gap: .5rem; align-items: center; }
+.previa-topo input { width: auto; }
+.previa-topo .dica { margin: 0; }
+.lista-previa { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
+.grupo, .sacas-admin { background: var(--papel); border: 1px solid var(--linha); border-radius: var(--raio); overflow: hidden; }
+.sacas-admin { margin-bottom: 1.2rem; }
+.faixa { background: var(--cor-rota); color: var(--texto-rota); padding: .6rem .9rem; font-weight: 700; border-bottom: 1px solid rgba(0,0,0,.2); }
+.grupo .corpo { padding: .8rem .9rem 1rem; }
+.grupo label { display: flex; flex-direction: column; gap: .25rem; font-weight: 500; font-size: .95rem; }
+.chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+.sacas-admin .chips { padding: .8rem .9rem; }
+.chip { font-size: .85rem; padding: .2rem .5rem; border-radius: 6px; background: #EEF1F0; border: 1px solid var(--linha); }
+.chip b { font-family: var(--fonte-placa); font-size: 1rem; }
+.chip.ok { background: #D9EFE1; border-color: #A9D7B9; }
+.rodape-previa { position: sticky; bottom: 0; display: flex; gap: .6rem; padding: 1rem 0; margin-top: 1rem; background: var(--fundo); border-top: 1px solid var(--linha); }

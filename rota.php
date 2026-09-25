@@ -1,5 +1,6 @@
 <?php
 require __DIR__ . '/config.php';
+require __DIR__ . '/sacas.php';
 exigir('admin');
 
 $id = (int)($_GET['id'] ?? 0);
@@ -86,6 +87,10 @@ $s = db()->prepare("SELECT * FROM paradas WHERE rota_id = ? ORDER BY numero, id"
 $s->execute([$id]);
 $paradas = $s->fetchAll();
 
+$s = db()->prepare("SELECT * FROM sacas WHERE rota_id = ? ORDER BY caixa");
+$s->execute([$id]);
+$sacas = $s->fetchAll();
+
 $editar = null;
 if (isset($_GET['editar'])) foreach ($paradas as $p) if ($p['id'] == $_GET['editar']) $editar = $p;
 
@@ -111,6 +116,16 @@ topo('Rota ' . $rota['motoboy'], 'rotas', true);
     </select>
   </form>
 </div>
+
+<link rel="stylesheet" href="assets/sacas.css?v=1">
+<?php if ($sacas): $col = count(array_filter($sacas, fn($x) => $x['coletada'])); ?>
+<div class="sacas-admin" style="--cor-rota:<?= e($rota['cor'] ?: '#F2B705') ?>;--texto-rota:<?= texto_sobre($rota['cor'] ?: '#F2B705') ?>">
+  <div class="faixa">Sacas: <?= $col ?> de <?= count($sacas) ?> coletadas · <?= array_sum(array_column($sacas, 'quantidade')) ?> pacotes</div>
+  <div class="chips">
+    <?php foreach ($sacas as $sc): ?><span class="chip <?= $sc['coletada'] ? 'ok' : '' ?>" title="<?= $sc['coletada'] ? 'Coletada às ' . hora_br($sc['coletada_em']) : 'Aguardando coleta' ?>"><b><?= (int)$sc['caixa'] ?></b> <?= (int)$sc['quantidade'] ?></span><?php endforeach; ?>
+  </div>
+</div>
+<?php endif; ?>
 
 <div class="duas-colunas">
   <div>

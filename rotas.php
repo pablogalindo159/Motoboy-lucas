@@ -1,5 +1,6 @@
 <?php
 require __DIR__ . '/config.php';
+require __DIR__ . '/sacas.php';
 exigir('admin');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
@@ -35,7 +36,8 @@ $rotuloStatus = ['aberta' => 'Aguardando', 'em_andamento' => 'Em andamento', 'fi
 
 topo('Rotas', 'rotas');
 ?>
-<h1>Rotas</h1>
+<link rel="stylesheet" href="assets/sacas.css?v=1">
+<div class="cabecalho-rota"><h1>Rotas</h1><a class="btn primario" href="importar_sacas.php">Importar planilha de sacas</a></div>
 <div class="duas-colunas">
   <form method="post" class="form cartao">
     <h2>Nova rota</h2>
@@ -61,7 +63,7 @@ topo('Rotas', 'rotas');
         <tbody>
         <?php foreach ($rotas as $r): $pct = $r['paradas'] ? round(($r['entregues'] + $r['falhas']) / $r['paradas'] * 100) : 0; ?>
           <tr>
-            <td><?= e($r['motoboy']) ?></td>
+            <td><?php if (!empty($r['cor'])): ?><span class="bolinha" style="background:<?= e($r['cor']) ?>"></span><?php endif; ?><?= e($r['motoboy']) ?></td>
             <td><?= e($r['descricao']) ?></td>
             <td><?= (int)$r['paradas'] ?></td>
             <td><?= (int)$r['pacotes'] ?></td>

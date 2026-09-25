@@ -1,5 +1,6 @@
 <?php
 require __DIR__ . '/config.php';
+require __DIR__ . '/sacas.php';
 exigir('admin');
 $data = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['data'] ?? '') ? $_GET['data'] : date('Y-m-d');
 topo('Painel', 'painel', true);
@@ -12,6 +13,7 @@ topo('Painel', 'painel', true);
     <div class="resumo" id="resumo"></div>
     <div id="lista"><p class="dica">Carregando…</p></div>
     <p class="dica" id="atualizado"></p>
+    <a class="btn largo" href="importar_sacas.php">Importar planilha de sacas</a>
   </aside>
   <div id="mapa" class="mapa-painel"></div>
 </div>
@@ -25,6 +27,11 @@ const camadas = L.layerGroup().addTo(mapa);
 const cores = ['#1F5FA8', '#7A3FA0', '#0E7C7B', '#B5501B', '#4E5D6C', '#A0306B'];
 let focado = null, primeiraVez = true;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function corTexto(hex) {
+  const h = hex.replace('#', ''); if (h.length !== 6) return '#fff';
+  const [r, g, b] = [0, 2, 4].map(i => parseInt(h.substr(i, 2), 16));
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#1B2B34' : '#fff';
+}
 const iniciais = n => n.split(' ').filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase();
 
 function sinal(min) {
@@ -49,7 +56,8 @@ async function carregar() {
   lista.innerHTML = '';
 
   dados.motoboys.forEach((m, i) => {
-    const cor = cores[i % cores.length];
+    const cor = m.cor || cores[i % cores.length];
+    const txt = corTexto(cor);
     const total = m.paradas.length;
     const ent = m.paradas.filter(p => p.status === 'entregue').length;
     const falha = m.paradas.filter(p => p.status === 'falhou').length;
@@ -73,7 +81,7 @@ async function carregar() {
     let marcador = null;
     if (m.lat) {
       const ll = [+m.lat, +m.lng]; limites.push(ll);
-      marcador = L.marker(ll, { zIndexOffset: 1000, icon: L.divIcon({ className: '', html: `<div class="moto ${m.minutos_sem_sinal !== null && m.minutos_sem_sinal <= 2 ? 'vivo' : ''}" style="--cor:${cor}">🛵 ${esc(iniciais(m.nome))}</div>`, iconSize: [70, 30], iconAnchor: [35, 15] }) })
+      marcador = L.marker(ll, { zIndexOffset: 1000, icon: L.divIcon({ className: '', html: `<div class="moto ${m.minutos_sem_sinal !== null && m.minutos_sem_sinal <= 2 ? 'vivo' : ''}" style="--cor:${cor};color:${txt};border-color:#1B2B34">🛵 ${esc(iniciais(m.nome))}</div>`, iconSize: [70, 30], iconAnchor: [35, 15] }) })
         .addTo(camadas).bindPopup(`<b>${esc(m.nome)}</b> ${esc(m.placa || '')}<br>${ent} de ${total} entregas · faltam ${faltam}`);
     }
 
@@ -85,6 +93,7 @@ async function carregar() {
       <div class="topo-moto"><strong>${esc(m.nome)}</strong>${sinal(m.minutos_sem_sinal)}</div>
       <div class="contagem"><span><b>${ent}</b> entregues</span><span><b>${faltam}</b> faltam</span>${falha ? `<span><b>${falha}</b> sem sucesso</span>` : ''}</div>
       <div class="progresso"><span style="width:${pct}%"></span></div>
+      ${m.sacas ? `<small>Sacas coletadas: ${m.sacas_coletadas} de ${m.sacas}</small>` : ''}
       <small>${pacEnt} de ${pac} pacotes${prox ? ` · próxima: parada ${prox.numero}, ${esc(prox.endereco)}` : (total ? ' · rota concluída' : '')}</small>`;
     c.onclick = () => {
       focado = m.id;
