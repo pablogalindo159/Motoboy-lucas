@@ -17,7 +17,16 @@ define('MAPA_LNG', -49.2064);
 define('EMAIL_CONTATO', 'contato@informaticasaojose.com.br');
 
 date_default_timezone_set('America/Sao_Paulo');
-ini_set('session.cookie_httponly', 1);
+// Sessão dura 14 h (o motoboy não precisa entrar de novo no meio do dia).
+// Fica numa pasta própria para a limpeza automática do Ubuntu (24 min) não derrubar o login.
+$dirSessao = sys_get_temp_dir() . '/netpoint_sessoes';
+if (!is_dir($dirSessao)) @mkdir($dirSessao, 0700, true);
+if (is_dir($dirSessao) && is_writable($dirSessao)) session_save_path($dirSessao);
+ini_set('session.gc_maxlifetime', '50400');
+ini_set('session.gc_probability', '1');
+ini_set('session.gc_divisor', '100');
+session_set_cookie_params(['lifetime' => 50400, 'path' => '/', 'httponly' => true, 'samesite' => 'Lax',
+                           'secure' => (($_SERVER['HTTPS'] ?? '') === 'on')]);
 session_start();
 
 // ===== BANCO =====
@@ -119,7 +128,7 @@ function topo(string $titulo, string $ativo = '', bool $mapa = false): void {
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <?php endif; ?>
-<link rel="stylesheet" href="assets/style.css?v=4">
+<link rel="stylesheet" href="assets/style.css?v=5">
 </head>
 <body>
 <?php if ($u && $u['tipo'] === 'admin'): ?>

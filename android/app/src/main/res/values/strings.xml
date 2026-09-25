@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Endereço do sistema. Trocou o domínio? Mude aqui e envie para o GitHub: sai um APK novo. -->
+    <string name="url_servidor">https://165.227.199.201/</string>
+</resources>

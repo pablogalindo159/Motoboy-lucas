@@ -25,5 +25,10 @@ topo('Entrar');
     <label>Senha<input name="senha" type="password" autocomplete="current-password" required></label>
     <button class="btn primario grande">Entrar</button>
   </form>
+  <a class="baixar-app" id="baixar-app" href="https://github.com/pablogalindo159/Motoboy-lucas/releases/latest/download/NetPoint-Rotas.apk">Baixar app Android</a>
+  <script>
+    // esconde o botão para quem já está no app ou não usa Android
+    if (window.NetPointApp || !/Android/i.test(navigator.userAgent)) document.getElementById('baixar-app').remove();
+  </script>
 </section>
 <?php rodape();

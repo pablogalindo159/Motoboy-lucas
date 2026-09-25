@@ -61,7 +61,7 @@ $corRota = $rota['cor'] ?? null;
       <strong><?= e($u['nome']) ?></strong>
       <span id="gps" class="gps">Ligando GPS…</span>
     </div>
-    <a href="logout.php" class="sair">Sair</a>
+    <a href="logout.php" class="sair" onclick="window.NetPointApp && NetPointApp.pararRastreio()">Sair</a>
   </header>
 
   <?php if (count($rotas) > 1): ?>
@@ -298,7 +298,18 @@ function enviar(pos) {
     .then(r => { gpsEl.textContent = r.ok ? 'Localização enviada ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Falha ao enviar'; gpsEl.className = 'gps ' + (r.ok ? 'on' : 'off'); })
     .catch(() => { gpsEl.textContent = 'Sem internet'; gpsEl.className = 'gps off'; });
 }
-if (!('geolocation' in navigator)) {
+// Dentro do app Android: o próprio app envia a localização, mesmo com o Waze/Maps na frente.
+const APP = window.NetPointApp;
+const EM_ROTA = <?= ($rota && $pendentes) ? 'true' : 'false' ?>;
+if (APP) {
+  if (EM_ROTA) {
+    APP.iniciarRastreio(CSRF, new URL('api.php', location.href).href);
+    gpsEl.textContent = 'Localização ligada pelo app'; gpsEl.className = 'gps on';
+  } else {
+    APP.pararRastreio();
+    gpsEl.textContent = 'Localização desligada (sem entregas pendentes)'; gpsEl.className = 'gps';
+  }
+} else if (!('geolocation' in navigator)) {
   gpsEl.textContent = 'Este celular não libera GPS'; gpsEl.className = 'gps off';
 } else {
   navigator.geolocation.watchPosition(enviar, err => {

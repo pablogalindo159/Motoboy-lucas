@@ -32,3 +32,10 @@ Sistema PHP + MySQL para lançar rotas de entrega e acompanhar os motoboys no ma
 Endereços já localizados ficam guardados. Com uma chave do Google (Geocoding API) em *Posição do CD*, a localização fica mais rápida e precisa.
 
 Na VPS: `apt install -y php-zip php-xml php-mbstring`. Dados do banco ficam em `config.local.php` (fora do Git).
+
+## App Android
+O GitHub gera o APK sozinho a cada mudança na pasta `android/` (Actions → "Gerar APK Android").
+Link fixo da versão mais nova: https://github.com/pablogalindo159/Motoboy-lucas/releases/latest/download/NetPoint-Rotas.apk
+
+O app abre o sistema em tela cheia e, enquanto o motoboy tem entregas pendentes, envia a localização mesmo com o Waze/Google Maps na frente (notificação fixa "Enviando sua localização").
+Endereço do servidor: `android/app/src/main/res/values/strings.xml` (`url_servidor`).
