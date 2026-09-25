@@ -74,9 +74,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
         flash('Parada voltou para pendente.');
     }
 
-    if ($acao === 'otimizar') {
-        $r = otimizar_rota($id);
-        flash("Rota reorganizada saindo do CD: {$r['paradas']} paradas, cerca de {$r['km']} km em linha reta." . ($r['sem_local'] ? " {$r['sem_local']} sem localização." : ''));
+    if ($acao === 'ordem_lista') {
+        $s = db()->prepare("SELECT id FROM paradas WHERE rota_id = ? ORDER BY status = 'pendente', entrega IS NULL, entrega, numero");
+        $s->execute([$id]);
+        $up = db()->prepare("UPDATE paradas SET numero = ? WHERE id = ?");
+        foreach ($s->fetchAll(PDO::FETCH_COLUMN) as $i => $pid) $up->execute([$i + 1, $pid]);
+        flash('Paradas na ordem do número da entrega.');
     }
 
     if ($acao === 'trocar_motoboy') {
@@ -115,8 +118,8 @@ topo('Rota ' . $rota['motoboy'], 'rotas', true);
     <p class="numeros"><b><?= $total ?></b> paradas <b><?= $pacotes ?></b> pacotes <b><?= $entregues ?></b> entregues <b><?= $total - $entregues - $falhas ?></b> faltam</p>
   </div>
   <form method="post" class="trocar">
-    <?= csrf_field() ?><input type="hidden" name="acao" value="otimizar">
-    <button class="btn">Refazer ordem saindo do CD</button>
+    <?= csrf_field() ?><input type="hidden" name="acao" value="ordem_lista">
+    <button class="btn">Ordenar pelo número da entrega</button>
   </form>
   <form method="post" class="trocar">
     <?= csrf_field() ?><input type="hidden" name="acao" value="trocar_motoboy">

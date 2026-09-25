@@ -99,6 +99,16 @@ $corRota = $rota['cor'] ?? null;
         <span class="titulo-sacas" id="sacas-titulo"><?= $todas ? 'Sacas coletadas' : 'Sacas para coletar' ?></span>
         <span class="contador" id="sacas-cont"><?= $sacasColetadas ?>/<?= count($sacas) ?></span>
       </summary>
+      <?php if ($fase === 'coleta' && $prox): ?>
+      <div class="primeira">
+        <p class="rotulo">Sua primeira entrega</p>
+        <div class="primeira-linha">
+          <span class="num-parada"><?= (int)($prox['entrega'] ?: $prox['numero']) ?></span>
+          <div><b><?= e($prox['endereco']) ?>, <?= e($prox['numero_casa']) ?></b>
+            <small><?= (int)$prox['pacotes'] ?> <?= $prox['pacotes'] > 1 ? 'pacotes' : 'pacote' ?> · caixa <?= $prox['entrega'] !== null ? intdiv((int)$prox['entrega'], 10) * 10 : '—' ?></small></div>
+        </div>
+      </div>
+      <?php endif; ?>
       <p class="dica">Toque em cada saca quando pegar. Total: <b><?= array_sum(array_column($sacas, 'quantidade')) ?></b> pacotes.</p>
       <div class="grade-sacas">
         <?php foreach ($sacas as $sc): ?>

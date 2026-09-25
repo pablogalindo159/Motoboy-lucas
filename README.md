@@ -24,8 +24,8 @@ Sistema PHP + MySQL para lançar rotas de entrega e acompanhar os motoboys no ma
 1. **Posição do CD** (uma vez): marque o CD no mapa. As rotas começam dele.
 2. **Quadrantes** (uma vez): desenhe as regiões no mapa ou importe do Google My Maps (.kml/.kmz). Cada quadrante pode ter um motoboy padrão.
 3. **Lista de entregas do dia**: envie o `.txt` (número, endereço, "N unidades"). O sistema localiza os endereços.
-4. **Distribuir**: pelos quadrantes, ou "Dividir automático" (fatias saindo do CD com a mesma quantidade de pacotes para quem trabalha no dia). Confira e toque em *Criar rotas saindo do CD*.
-5. No celular, o motoboy toca **Cheguei no CD**, vê as caixas (caixa 0 = entregas 0–9, caixa 10 = 10–19…), marca cada uma e toca **Sair para as entregas**. Se uma caixa for dividida com outro motoboy, aparece quais entregas são dele.
+4. **Distribuir**: pelos quadrantes, ou "Dividir automático" (mesma quantidade de pacotes para quem trabalha no dia). Confira e toque em *Criar rotas*. A sequência de entrega de cada motoboy é sempre a do número da lista (.txt).
+5. No celular, o motoboy toca **Cheguei no CD**, vê a primeira entrega e as caixas (caixa 0 = entregas 0–9, caixa 10 = 10–19…), marca cada uma e toca **Sair para as entregas**. Se uma caixa for dividida com outro motoboy, aparece quais entregas são dele.
 
 Endereços já localizados ficam guardados. Com uma chave do Google (Geocoding API) em *Posição do CD*, a localização fica mais rápida e precisa.
 

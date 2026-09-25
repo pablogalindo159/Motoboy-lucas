@@ -30,7 +30,7 @@ if (($_POST['acao'] ?? '') === 'confirmar' && csrf_ok()) {
         flash('Erro ao criar as rotas: ' . $ex->getMessage(), 'erro'); redirecionar("distribuir.php?data=$data&modo=$modo");
     }
     $semMoto = array_sum(array_map(fn($g) => $g['motoboy_id'] ? 0 : count($g['entregas']), $grupos));
-    flash(count($rotas) . ' rotas criadas saindo do CD.' . ($semMoto ? " $semMoto entregas ficaram sem motoboy." : ''), $semMoto ? 'alerta' : 'ok');
+    flash(count($rotas) . ' rotas criadas na ordem da lista.' . ($semMoto ? " $semMoto entregas ficaram sem motoboy." : ''), $semMoto ? 'alerta' : 'ok');
     redirecionar('admin.php?data=' . urlencode($data));
 }
 
@@ -100,9 +100,9 @@ topo('Distribuir entregas', 'rotas', true);
     </div>
     <?php if ($modo === 'quadrantes'): ?><label class="lembrar"><input type="checkbox" name="lembrar" value="1" checked> Lembrar estes motoboys nos quadrantes para os próximos dias</label><?php endif; ?>
     <div class="rodape-previa">
-      <button class="btn primario grande">Criar rotas saindo do CD</button>
+      <button class="btn primario grande">Criar rotas</button>
     </div>
-    <p class="dica">Um motoboy pode ficar com mais de um quadrante: vira uma rota só. As caixas de cada um saem das entregas dele.</p>
+    <p class="dica">Cada motoboy entrega na ordem do número da lista. Um motoboy pode ficar com mais de um quadrante: vira uma rota só. As caixas de cada um saem das entregas dele.</p>
   </form>
   <div>
     <div id="mapa" class="mapa-rota mapa-dist"></div>

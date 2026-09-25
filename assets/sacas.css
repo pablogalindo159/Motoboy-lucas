@@ -73,3 +73,11 @@
 .quad .acoes { justify-content: flex-start; }
 .rotulo-quad { background: rgba(0,0,0,.75); color: #fff; border: 0; font-weight: 700; box-shadow: none; }
 .rotulo-quad::before { display: none; }
+
+/* primeira entrega (na tela de coleta) */
+.primeira { margin: 1rem 1rem .2rem; padding: .8rem .9rem; border: 2px solid var(--asfalto); border-radius: 12px; background: #fff; }
+.primeira .rotulo { margin: 0 0 .5rem; }
+.primeira-linha { display: flex; gap: .8rem; align-items: center; }
+.primeira-linha .num-parada { min-width: 52px; height: 52px; font-size: 1.5rem; border-radius: 10px; }
+.primeira-linha b { font-size: 1.15rem; display: block; line-height: 1.25; }
+.primeira-linha small { display: block; margin-top: .2rem; }

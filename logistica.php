@@ -369,7 +369,7 @@ function criar_rotas_do_dia(string $data, array $grupos): array {
         }
         $pdo->commit();
     } catch (Throwable $ex) { $pdo->rollBack(); throw $ex; }
+    // a sequência de entrega é a do número da lista (.txt): 1, 2, 3...
     foreach ($rotas as $rid) recalcular_sacas_rota($rid);
-    foreach ($rotas as $rid) otimizar_rota($rid);
     return $rotas;
 }
