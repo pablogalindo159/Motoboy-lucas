@@ -59,6 +59,7 @@ $data = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['data'] ?? '') ? $_GET['data']
   .pin-moto.parado { opacity: .55; }
   .pin-cd { display: grid; place-items: center; width: 42px; height: 28px; background: #000; color: var(--marca); border: 2px solid var(--marca); border-radius: 6px; font: 800 14px var(--num); transform: translate(-50%, -50%); }
   .leaflet-container { font-family: var(--fonte); }
+  .mapa-escurecido .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9) saturate(.6); }
   .leaflet-control-attribution { background: rgba(0,0,0,.6) !important; color: #777 !important; font-size: 10px; }
   .leaflet-control-attribution a { color: #999 !important; }
   .tela-cheia { position: fixed; left: 1vw; bottom: 1.5vh; z-index: 999; background: var(--marca); color: #000; border: 0; border-radius: 99px;
@@ -90,7 +91,14 @@ $data = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['data'] ?? '') ? $_GET['data']
 <script>
 const URL_DADOS = 'api.php?acao=painel&data=<?= e($data) ?>' + <?= json_encode($porLink ? '&chave=' . $chave : '') ?>;
 const mapa = L.map('mapa', { zoomControl: false, preferCanvas: true, attributionControl: true }).setView([<?= MAPA_LAT ?>, <?= MAPA_LNG ?>], 12);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19, subdomains: 'abcd', attribution: '© OpenStreetMap © CARTO' }).addTo(mapa);
+const CARTO_KEY = <?= json_encode((string)cfg('carto_key', '')) ?>;
+if (CARTO_KEY) {
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=' + encodeURIComponent(CARTO_KEY), { maxZoom: 19, subdomains: 'abcd', attribution: '© OpenStreetMap © CARTO' }).addTo(mapa);
+} else {
+  // sem chave: mapa comum do OpenStreetMap, escurecido
+  document.getElementById('mapa').classList.add('mapa-escurecido');
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapa);
+}
 const camadas = L.layerGroup().addTo(mapa);
 const reserva = ['#8CF20A', '#00B0F0', '#FF0066', '#FFC000', '#9B59FF', '#00C49A', '#FF6A00', '#1F5FA8'];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

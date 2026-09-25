@@ -16,6 +16,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
         cfg_salvar('cd_lat', (string)(float)$_POST['lat']); cfg_salvar('cd_lng', (string)(float)$_POST['lng']);
         flash('Posição do CD salva.');
     }
+    if ($acao === 'carto') {
+        $k = trim($_POST['carto_key'] ?? '');
+        cfg_salvar('carto_key', preg_match('/^[A-Za-z0-9_\-]{8,120}$/', $k) ? $k : null);
+        flash($k === '' ? 'Chave do mapa da TV removida.' : (cfg('carto_key') ? 'Chave do mapa da TV salva.' : 'Chave inválida.'), cfg('carto_key') || $k === '' ? 'ok' : 'erro');
+    }
     if ($acao === 'google') {
         cfg_salvar('google_key', trim($_POST['google_key'] ?? '') ?: null);
         flash('Chave salva.');
@@ -40,6 +45,12 @@ topo('Centro de distribuição', 'rotas', true);
       <p><b>Chave do Google Maps</b> <small>(opcional)</small><br>Com ela os endereços são achados em segundos e com mais precisão. Sem ela o sistema usa o OpenStreetMap, grátis, mas leva cerca de 1 segundo por endereço novo.</p>
       <label>Chave da Geocoding API<input name="google_key" value="<?= e(cfg('google_key', '')) ?>" autocomplete="off"></label>
       <button class="btn">Salvar chave</button>
+    </form>
+    <form method="post" class="form cartao" style="margin-top:1rem">
+      <?= csrf_field() ?><input type="hidden" name="acao" value="carto">
+      <p><b>Mapa escuro da TV (CARTO)</b><br>Sem a chave, a TV usa o mapa comum escurecido. Chave grátis em carto.com/basemaps/apikey.</p>
+      <label>Chave CARTO<input name="carto_key" value="<?= e(cfg('carto_key', '')) ?>" autocomplete="off" placeholder="cb1_..."></label>
+      <button class="btn">Salvar chave do mapa</button>
     </form>
   </div>
   <div>
