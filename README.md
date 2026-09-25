@@ -21,12 +21,12 @@ Sistema PHP + MySQL para lançar rotas de entrega e acompanhar os motoboys no ma
 - Endereços viram coordenadas pelo Nominatim (OpenStreetMap, grátis). Se um ponto cair errado, arraste o marcador na tela da rota.
 
 ## Rotina do dia (automática)
-1. **Rotas → Posição do CD** (só uma vez): marque o CD no mapa. As rotas começam dele.
-2. **1. Planilha de cores**: envie o `CONTROLE_DELIVERY` (.xlsx). Cada cor vira um motoboy com suas caixas.
-3. **2. Lista de entregas**: envie o `.txt` do dia (número, endereço, "N unidades"). Cada entrega vai para o motoboy dono da caixa dela (entregas 380–389 = caixa 380).
-4. O sistema localiza os endereços e monta a ordem de cada rota saindo do CD. Deixe a tela aberta até terminar.
-5. No celular, o motoboy toca **Cheguei no CD**, vê as caixas para pegar, marca cada uma e toca **Sair para as entregas**.
+1. **Posição do CD** (uma vez): marque o CD no mapa. As rotas começam dele.
+2. **Quadrantes** (uma vez): desenhe as regiões no mapa ou importe do Google My Maps (.kml/.kmz). Cada quadrante pode ter um motoboy padrão.
+3. **Lista de entregas do dia**: envie o `.txt` (número, endereço, "N unidades"). O sistema localiza os endereços.
+4. **Distribuir**: pelos quadrantes, ou "Dividir automático" (fatias saindo do CD com a mesma quantidade de pacotes para quem trabalha no dia). Confira e toque em *Criar rotas saindo do CD*.
+5. No celular, o motoboy toca **Cheguei no CD**, vê as caixas (caixa 0 = entregas 0–9, caixa 10 = 10–19…), marca cada uma e toca **Sair para as entregas**. Se uma caixa for dividida com outro motoboy, aparece quais entregas são dele.
 
-Endereços já localizados ficam guardados e não são consultados de novo. Com uma chave do Google (Geocoding API) em *Posição do CD*, a localização fica mais rápida e precisa.
+Endereços já localizados ficam guardados. Com uma chave do Google (Geocoding API) em *Posição do CD*, a localização fica mais rápida e precisa.
 
-Na VPS as extensões necessárias são: `apt install -y php-zip php-xml php-mbstring`.
+Na VPS: `apt install -y php-zip php-xml php-mbstring`. Dados do banco ficam em `config.local.php` (fora do Git).

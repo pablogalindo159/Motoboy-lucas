@@ -51,3 +51,25 @@
 .processo #etapa { font-weight: 600; font-size: 1.1rem; }
 .mapa-cd { display: grid; place-items: center; width: 100%; height: 100%; background: var(--asfalto); color: var(--placa);
   font-family: var(--fonte-placa); font-weight: 800; font-size: 13px; border-radius: 6px; border: 2px solid var(--placa); }
+
+/* distribuição e quadrantes */
+.abas-modo { display: flex; gap: .4rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.abas-modo a { padding: .55rem 1rem; border-radius: 99px; border: 1px solid var(--linha); background: #fff; text-decoration: none; color: var(--asfalto); font-weight: 600; }
+.abas-modo a.ativo { background: #000; color: var(--marca, #8CF20A); border-color: #000; }
+.motos-dia { margin-bottom: 1rem; }
+.chips-motos { display: flex; flex-wrap: wrap; gap: .4rem; margin: .6rem 0 .9rem; }
+.chips-motos label { display: flex; align-items: center; gap: .35rem; padding: .35rem .7rem; border: 1px solid var(--linha); border-radius: 99px; background: #fff; cursor: pointer; }
+.chips-motos input { width: auto; }
+.lista-grupos { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: .8rem; }
+.lista-grupos .corpo p { margin: 0 0 .6rem; }
+.mapa-dist, .mapa-quad { height: 70vh; min-height: 420px; }
+.distribuir { grid-template-columns: minmax(300px, 1.1fr) 1fr; }
+@media (max-width: 860px) { .distribuir { grid-template-columns: 1fr; } }
+.lembrar { display: flex; gap: .5rem; align-items: center; margin-top: .8rem; font-weight: 500; }
+.lembrar input { width: auto; }
+.quad { border-left: 8px solid var(--cor-rota); margin-bottom: .6rem; display: flex; flex-direction: column; gap: .5rem; padding: .8rem; }
+.quad .linha { display: flex; gap: .5rem; }
+.quad input[type=color] { width: 44px; padding: 2px; height: 40px; }
+.quad .acoes { justify-content: flex-start; }
+.rotulo-quad { background: rgba(0,0,0,.75); color: #fff; border: 0; font-weight: 700; box-shadow: none; }
+.rotulo-quad::before { display: none; }

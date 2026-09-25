@@ -5,7 +5,7 @@ exigir('admin');
 $data = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['data'] ?? '') ? $_GET['data'] : date('Y-m-d');
 topo('Painel', 'painel', true);
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=2">
+<link rel="stylesheet" href="assets/sacas.css?v=3">
 <div class="painel">
   <aside class="lateral">
     <form class="filtro-data">
@@ -14,8 +14,8 @@ topo('Painel', 'painel', true);
     <div class="resumo" id="resumo"></div>
     <div id="lista"><p class="dica">Carregando…</p></div>
     <p class="dica" id="atualizado"></p>
-    <a class="btn largo" href="importar_sacas.php">1. Importar planilha de cores (caixas)</a>
-    <a class="btn largo" href="importar_entregas.php" style="margin-top:.4rem">2. Importar lista de entregas</a>
+    <a class="btn largo" href="importar_entregas.php?data=<?= e($data) ?>">Carregar lista de entregas do dia</a>
+    <a class="btn largo" href="quadrantes.php" style="margin-top:.4rem">Quadrantes</a>
   </aside>
   <div id="mapa" class="mapa-painel"></div>
 </div>

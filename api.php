@@ -87,21 +87,18 @@ case 'geocodificar_lote':
     $data = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['data'] ?? '') ? $_POST['data'] : date('Y-m-d');
     set_time_limit(60);
     $fim = microtime(true) + 20;
-    $prox = db()->prepare("SELECT p.id, p.endereco, p.numero_casa FROM paradas p JOIN rotas r ON r.id = p.rota_id
-                           WHERE r.data = ? AND p.geo_tentado = 0 AND p.lat IS NULL LIMIT 1");
-    $up = db()->prepare("UPDATE paradas SET lat = ?, lng = ?, geo_tentado = 1
-                         WHERE id = ? OR (lat IS NULL AND rota_id IN (SELECT id FROM rotas WHERE data = ?) AND endereco <=> ? AND numero_casa <=> ?)");
+    $prox = db()->prepare("SELECT id, rua, numero_casa FROM entregas WHERE data = ? AND geo_tentado = 0 AND lat IS NULL LIMIT 1");
+    $up = db()->prepare("UPDATE entregas SET lat = ?, lng = ?, geo_tentado = 1 WHERE id = ? OR (data = ? AND lat IS NULL AND rua <=> ? AND numero_casa <=> ?)");
     while (microtime(true) < $fim) {
         $prox->execute([$data]);
         $p = $prox->fetch();
         if (!$p) break;
         $consultou = false;
-        [$lat, $lng] = geo_localizar($p['endereco'], (string)$p['numero_casa'], $consultou);
-        $up->execute([$lat, $lng, $p['id'], $data, $p['endereco'], $p['numero_casa']]);
+        [$lat, $lng] = geo_localizar($p['rua'], (string)$p['numero_casa'], $consultou);
+        $up->execute([$lat, $lng, $p['id'], $data, $p['rua'], $p['numero_casa']]);
         if ($consultou) usleep(1100000); // limite do OpenStreetMap: 1 consulta por segundo
     }
-    $c = db()->prepare("SELECT COUNT(*) total, COALESCE(SUM(p.geo_tentado = 0 AND p.lat IS NULL),0) pendentes, COALESCE(SUM(p.geo_tentado = 1 AND p.lat IS NULL),0) sem_local
-                        FROM paradas p JOIN rotas r ON r.id = p.rota_id WHERE r.data = ?");
+    $c = db()->prepare("SELECT COUNT(*) total, COALESCE(SUM(geo_tentado = 0 AND lat IS NULL),0) pendentes, COALESCE(SUM(geo_tentado = 1 AND lat IS NULL),0) sem_local FROM entregas WHERE data = ?");
     $c->execute([$data]);
     $t = $c->fetch();
     responder(['total' => (int)$t['total'], 'pendentes' => (int)$t['pendentes'], 'sem_local' => (int)$t['sem_local']]);

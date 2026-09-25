@@ -223,3 +223,153 @@ function otimizar_rota(int $rotaId): array {
     foreach ($ordem as $p) if ($p['lat'] !== null) { $q = [(float)$p['lat'], (float)$p['lng']]; if ($ant) $km += distancia_m($ant, $q); $ant = $q; }
     return ['paradas' => count($ordem), 'sem_local' => count($sem), 'km' => round($km / 1000, 1)];
 }
+
+// =====================================================================
+// Distribuição por quadrante (só com a lista .txt, sem planilha de cores)
+// =====================================================================
+function garantir_schema_v3(): void {
+    $flag = __DIR__ . '/.schema_v3';
+    if (file_exists($flag)) return;
+    db()->exec("CREATE TABLE IF NOT EXISTS entregas (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        data DATE NOT NULL,
+        entrega INT NOT NULL,
+        rua VARCHAR(200) NOT NULL,
+        numero_casa VARCHAR(40) NULL,
+        pacotes INT NOT NULL DEFAULT 1,
+        lat DECIMAL(10,7) NULL,
+        lng DECIMAL(10,7) NULL,
+        geo_tentado TINYINT(1) NOT NULL DEFAULT 0,
+        INDEX (data, entrega)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    db()->exec("CREATE TABLE IF NOT EXISTS quadrantes (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        nome VARCHAR(60) NOT NULL,
+        cor VARCHAR(7) NOT NULL DEFAULT '#8CF20A',
+        pontos MEDIUMTEXT NOT NULL,
+        motoboy_id INT NULL,
+        ativo TINYINT(1) NOT NULL DEFAULT 1
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    @touch($flag);
+}
+garantir_schema_v3();
+
+const PALETA = ['#8CF20A', '#00B0F0', '#FF0066', '#FFC000', '#9B59FF', '#00C49A', '#FF6A00', '#1F5FA8',
+                '#D60093', '#7A5C00', '#00FFFF', '#B8352A', '#5E8C00', '#FF99CC', '#2F5597', '#BFBFBF'];
+
+function quadrantes_ativos(): array {
+    $q = db()->query("SELECT * FROM quadrantes WHERE ativo = 1 ORDER BY nome")->fetchAll();
+    foreach ($q as &$x) $x['pontos'] = json_decode($x['pontos'], true) ?: [];
+    return $q;
+}
+
+// ponto [lat,lng] dentro do polígono [[lat,lng],...]
+function dentro_poligono(array $p, array $poli): bool {
+    $dentro = false; $n = count($poli);
+    for ($i = 0, $j = $n - 1; $i < $n; $j = $i++) {
+        [$yi, $xi] = $poli[$i]; [$yj, $xj] = $poli[$j];
+        if ((($yi > $p[0]) !== ($yj > $p[0])) && ($p[1] < ($xj - $xi) * ($p[0] - $yi) / (($yj - $yi) ?: 1e-12) + $xi)) $dentro = !$dentro;
+    }
+    return $dentro;
+}
+
+// Entregas sem localização vão para o grupo da entrega de número mais próximo
+// (a numeração da lista já segue a região).
+function completar_sem_local(array $entregas, array &$grupoDe): void {
+    $com = array_filter($entregas, fn($e) => isset($grupoDe[$e['id']]));
+    if (!$com) return;
+    foreach ($entregas as $e) {
+        if (isset($grupoDe[$e['id']])) continue;
+        $melhor = null; $dm = PHP_INT_MAX;
+        foreach ($com as $c) { $d = abs($c['entrega'] - $e['entrega']); if ($d < $dm) { $dm = $d; $melhor = $c['id']; } }
+        $grupoDe[$e['id']] = $grupoDe[$melhor];
+    }
+}
+
+function entregas_do_dia(string $data): array {
+    $s = db()->prepare("SELECT * FROM entregas WHERE data = ? ORDER BY entrega");
+    $s->execute([$data]);
+    return $s->fetchAll();
+}
+
+/** Grupos pelos quadrantes desenhados. Retorna [grupos, avisos]. */
+function grupos_por_quadrante(string $data): array {
+    $quads = quadrantes_ativos();
+    $entregas = entregas_do_dia($data);
+    $grupoDe = []; $fora = 0;
+    foreach ($entregas as $e) {
+        if ($e['lat'] === null) continue;
+        $p = [(float)$e['lat'], (float)$e['lng']];
+        $achou = null;
+        foreach ($quads as $q) if (count($q['pontos']) >= 3 && dentro_poligono($p, $q['pontos'])) { $achou = $q['id']; break; }
+        if ($achou === null && $quads) { // fora de todos: vai para o quadrante mais perto
+            $fora++; $dm = INF;
+            foreach ($quads as $q) foreach ($q['pontos'] as $v) { $d = distancia_m($p, $v); if ($d < $dm) { $dm = $d; $achou = $q['id']; } }
+        }
+        if ($achou !== null) $grupoDe[$e['id']] = 'q' . $achou;
+    }
+    completar_sem_local($entregas, $grupoDe);
+    $grupos = [];
+    foreach ($quads as $q) $grupos['q' . $q['id']] = ['chave' => 'q' . $q['id'], 'nome' => $q['nome'], 'cor' => $q['cor'], 'motoboy_id' => $q['motoboy_id'], 'entregas' => []];
+    foreach ($entregas as $e) if (isset($grupoDe[$e['id']])) $grupos[$grupoDe[$e['id']]]['entregas'][] = $e;
+    return [array_values(array_filter($grupos, fn($g) => $g['entregas'])), ['fora' => $fora]];
+}
+
+/** Divisão automática em setores (fatias de pizza saindo do CD), com pacotes equilibrados. */
+function grupos_por_setor(string $data, array $motoboyIds): array {
+    $n = max(1, count($motoboyIds));
+    $entregas = entregas_do_dia($data);
+    $com = array_values(array_filter($entregas, fn($e) => $e['lat'] !== null));
+    if (!$com) return [[], []];
+    $centro = cd_posicao();
+    if (!$centro) $centro = [array_sum(array_column($com, 'lat')) / count($com), array_sum(array_column($com, 'lng')) / count($com)];
+    $k = cos(deg2rad($centro[0]));
+    foreach ($com as &$e) $e['ang'] = atan2((float)$e['lat'] - $centro[0], ((float)$e['lng'] - $centro[1]) * $k);
+    unset($e);
+    usort($com, fn($a, $b) => $a['ang'] <=> $b['ang']);
+    // começa depois do maior "buraco" para não cortar um bairro no meio
+    $m = count($com); $gap = -1; $ini = 0;
+    for ($i = 0; $i < $m; $i++) {
+        $g = ($i + 1 < $m ? $com[$i + 1]['ang'] : $com[0]['ang'] + 2 * M_PI) - $com[$i]['ang'];
+        if ($g > $gap) { $gap = $g; $ini = ($i + 1) % $m; }
+    }
+    $com = array_merge(array_slice($com, $ini), array_slice($com, 0, $ini));
+    $total = array_sum(array_column($entregas, 'pacotes')); $alvo = $total / $n; $acc = 0; $grupoDe = [];
+    foreach ($com as $e) { $grupoDe[$e['id']] = 's' . min($n - 1, (int)floor(($acc + $e['pacotes'] / 2) / $alvo)); $acc += $e['pacotes']; }
+    completar_sem_local($entregas, $grupoDe);
+    $grupos = [];
+    for ($i = 0; $i < $n; $i++) $grupos['s' . $i] = ['chave' => 's' . $i, 'nome' => 'Setor ' . ($i + 1), 'cor' => PALETA[$i % count(PALETA)], 'motoboy_id' => $motoboyIds[$i] ?? null, 'entregas' => []];
+    foreach ($entregas as $e) if (isset($grupoDe[$e['id']])) $grupos[$grupoDe[$e['id']]]['entregas'][] = $e;
+    return [array_values($grupos), []];
+}
+
+/** Cria as rotas do dia a partir dos grupos (substitui as rotas desse dia). */
+function criar_rotas_do_dia(string $data, array $grupos): array {
+    $porMoto = [];
+    foreach ($grupos as $g) {
+        if (empty($g['motoboy_id'])) continue;
+        $m = &$porMoto[(int)$g['motoboy_id']];
+        $m['nomes'][] = $g['nome']; $m['cor'] ??= $g['cor'];
+        $m['entregas'] = array_merge($m['entregas'] ?? [], $g['entregas']);
+        unset($m);
+    }
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        $pdo->prepare("DELETE FROM rotas WHERE data = ?")->execute([$data]);
+        $insR = $pdo->prepare("INSERT INTO rotas (motoboy_id, data, descricao, cor) VALUES (?,?,?,?)");
+        $insP = $pdo->prepare("INSERT INTO paradas (rota_id, numero, entrega, endereco, numero_casa, cidade, pacotes, lat, lng, geo_tentado) VALUES (?,?,?,?,?,'',?,?,?,1)");
+        $rotas = [];
+        foreach ($porMoto as $mid => $m) {
+            $insR->execute([$mid, $data, implode(' + ', $m['nomes']), $m['cor']]);
+            $rid = (int)$pdo->lastInsertId(); $rotas[] = $rid;
+            usort($m['entregas'], fn($a, $b) => $a['entrega'] <=> $b['entrega']);
+            $n = 0;
+            foreach ($m['entregas'] as $e) $insP->execute([$rid, ++$n, $e['entrega'], $e['rua'], $e['numero_casa'], $e['pacotes'], $e['lat'], $e['lng']]);
+        }
+        $pdo->commit();
+    } catch (Throwable $ex) { $pdo->rollBack(); throw $ex; }
+    foreach ($rotas as $rid) recalcular_sacas_rota($rid);
+    foreach ($rotas as $rid) otimizar_rota($rid);
+    return $rotas;
+}
