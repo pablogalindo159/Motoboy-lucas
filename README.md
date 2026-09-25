@@ -22,7 +22,7 @@ Sistema PHP + MySQL para lançar rotas de entrega e acompanhar os motoboys no ma
 
 ## Rotina do dia (automática)
 1. **Posição do CD** (uma vez): marque o CD no mapa. As rotas começam dele.
-2. **Quadrantes** (uma vez): desenhe as regiões no mapa ou importe do Google My Maps (.kml/.kmz). Cada quadrante pode ter um motoboy padrão.
+2. **Quadrantes**: as 19 zonas fixas do Mercado Livre (Cajuru 01–09, Capão da Imbuia 01–02, Cristo Rei 01–03, Vargem Grande 01–02, Weissópolis 01–03) já vêm no sistema (`quadrantes_fixos.json`). Escolha o motoboy padrão de cada zona uma vez.
 3. **Lista de entregas do dia**: envie o `.txt` (número, endereço, "N unidades"). O sistema localiza os endereços.
 4. **Distribuir**: pelos quadrantes, ou "Dividir automático" (mesma quantidade de pacotes para quem trabalha no dia). Confira e toque em *Criar rotas*. A sequência de entrega de cada motoboy é sempre a do número da lista (.txt).
 5. No celular, o motoboy toca **Cheguei no CD**, vê a primeira entrega e as caixas (caixa 0 = entregas 0–9, caixa 10 = 10–19…), marca cada uma e toca **Sair para as entregas**. Se uma caixa for dividida com outro motoboy, aparece quais entregas são dele.

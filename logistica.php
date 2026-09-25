@@ -86,7 +86,7 @@ function http_json(string $url, array $headers = []) {
 
 // Consulta de verdade (Google se tiver chave, senão OpenStreetMap). Retorna [lat, lng, fonte, consultou_nominatim]
 function geo_consultar(string $rua, string $num): array {
-    [$o, $n, $l, $s] = REGIAO_BUSCA;
+    [$o, $n, $l, $s] = regiao_busca();
     $chave = trim((string)cfg('google_key', ''));
     if ($chave !== '') {
         $url = 'https://maps.googleapis.com/maps/api/geocode/json?' . http_build_query([
@@ -265,6 +265,53 @@ function quadrantes_ativos(): array {
     return $q;
 }
 
+// Região de busca de endereços: em volta das zonas (com ~3 km de folga); sem zonas, a região metropolitana.
+function regiao_busca(): array {
+    static $r = null;
+    if ($r !== null) return $r;
+    $lat = []; $lng = [];
+    foreach (db()->query("SELECT pontos FROM quadrantes WHERE ativo = 1")->fetchAll(PDO::FETCH_COLUMN) as $j)
+        foreach (json_decode($j, true) ?: [] as $p) { $lat[] = $p[0]; $lng[] = $p[1]; }
+    if (!$lat) return $r = REGIAO_BUSCA;
+    $m = 0.03;
+    return $r = [min($lng) - $m, max($lat) + $m, max($lng) + $m, min($lat) - $m];
+}
+
+// Zonas fixas (Mercado Livre) que vêm com o sistema
+function carregar_quadrantes_fixos(bool $substituir = false): int {
+    $zonas = json_decode((string)@file_get_contents(__DIR__ . '/quadrantes_fixos.json'), true) ?: [];
+    if (!$zonas) return 0;
+    $motoPorNome = [];
+    if ($substituir) {
+        foreach (db()->query("SELECT nome, motoboy_id FROM quadrantes WHERE motoboy_id IS NOT NULL ORDER BY id")->fetchAll() as $x) $motoPorNome[$x['nome']] ??= $x['motoboy_id'];
+        db()->exec("DELETE FROM quadrantes");
+    }
+    $ins = db()->prepare("INSERT INTO quadrantes (nome, cor, pontos, motoboy_id) VALUES (?,?,?,?)");
+    foreach ($zonas as $z) $ins->execute([$z['nome'], $z['cor'], json_encode($z['pontos']), $motoPorNome[$z['nome']] ?? null]);
+    return count($zonas);
+}
+
+function garantir_schema_v4(): void {
+    $flag = __DIR__ . '/.schema_v4';
+    if (file_exists($flag)) return;
+    if (!(int)db()->query("SELECT COUNT(*) FROM quadrantes")->fetchColumn()) carregar_quadrantes_fixos();
+    @touch($flag);
+}
+garantir_schema_v4();
+
+// distância em metros de um ponto até a borda do polígono
+function distancia_borda(array $p, array $poli): float {
+    $k = cos(deg2rad($p[0])) * 111320; $kl = 110540;
+    $px = $p[1] * $k; $py = $p[0] * $kl; $min = INF; $n = count($poli);
+    for ($i = 0, $j = $n - 1; $i < $n; $j = $i++) {
+        $ax = $poli[$j][1] * $k; $ay = $poli[$j][0] * $kl; $bx = $poli[$i][1] * $k; $by = $poli[$i][0] * $kl;
+        $dx = $bx - $ax; $dy = $by - $ay; $l2 = $dx * $dx + $dy * $dy;
+        $t = $l2 ? max(0, min(1, (($px - $ax) * $dx + ($py - $ay) * $dy) / $l2)) : 0;
+        $min = min($min, hypot($px - ($ax + $t * $dx), $py - ($ay + $t * $dy)));
+    }
+    return $min;
+}
+
 // ponto [lat,lng] dentro do polígono [[lat,lng],...]
 function dentro_poligono(array $p, array $poli): bool {
     $dentro = false; $n = count($poli);
@@ -302,11 +349,16 @@ function grupos_por_quadrante(string $data): array {
     foreach ($entregas as $e) {
         if ($e['lat'] === null) continue;
         $p = [(float)$e['lat'], (float)$e['lng']];
-        $achou = null;
-        foreach ($quads as $q) if (count($q['pontos']) >= 3 && dentro_poligono($p, $q['pontos'])) { $achou = $q['id']; break; }
-        if ($achou === null && $quads) { // fora de todos: vai para o quadrante mais perto
+        $achou = null; $fundo = -1;
+        // dentro de mais de uma zona (sobreposição): fica na zona onde está mais "para dentro"
+        foreach ($quads as $q) {
+            if (count($q['pontos']) < 3 || !dentro_poligono($p, $q['pontos'])) continue;
+            $d = distancia_borda($p, $q['pontos']);
+            if ($d > $fundo) { $fundo = $d; $achou = $q['id']; }
+        }
+        if ($achou === null && $quads) { // fora de todas (fresta entre zonas): vai para a borda mais perto
             $fora++; $dm = INF;
-            foreach ($quads as $q) foreach ($q['pontos'] as $v) { $d = distancia_m($p, $v); if ($d < $dm) { $dm = $d; $achou = $q['id']; } }
+            foreach ($quads as $q) { if (count($q['pontos']) < 3) continue; $d = distancia_borda($p, $q['pontos']); if ($d < $dm) { $dm = $d; $achou = $q['id']; } }
         }
         if ($achou !== null) $grupoDe[$e['id']] = 'q' . $achou;
     }

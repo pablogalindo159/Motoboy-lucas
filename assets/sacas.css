@@ -71,7 +71,7 @@
 .quad .linha { display: flex; gap: .5rem; }
 .quad input[type=color] { width: 44px; padding: 2px; height: 40px; }
 .quad .acoes { justify-content: flex-start; }
-.rotulo-quad { background: rgba(0,0,0,.75); color: #fff; border: 0; font-weight: 700; box-shadow: none; }
+.rotulo-quad { background: rgba(0,0,0,.72); color: #fff; border: 0; font-weight: 700; font-size: 10.5px; padding: 1px 5px; box-shadow: none; }
 .rotulo-quad::before { display: none; }
 
 /* primeira entrega (na tela de coleta) */
@@ -86,3 +86,5 @@
 .tv-link summary { cursor: pointer; font-weight: 600; }
 .tv-link input { margin: .4rem 0 .6rem; font-size: .8rem; }
 .tv-link .acoes { justify-content: flex-start; }
+.restaurar { margin: .8rem 0; }
+.quadrantes .quad { padding: .6rem .8rem; }

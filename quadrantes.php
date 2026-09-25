@@ -50,19 +50,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
         db()->prepare("DELETE FROM quadrantes WHERE id = ?")->execute([(int)$_POST['id']]);
         flash('Quadrante excluído.');
     }
+    if ($acao === 'fixos') {
+        $n = carregar_quadrantes_fixos(true);
+        flash("$n zonas fixas restauradas (motoboys padrão mantidos).");
+    }
     if ($acao === 'kml') {
-        $arq = $_FILES['kml']['tmp_name'] ?? '';
-        $xml = '';
-        if ($arq && is_uploaded_file($arq)) {
-            $xml = file_get_contents($arq);
-            if (str_starts_with($xml, "PK") && class_exists('ZipArchive')) { // .kmz
+        $lidos = [];
+        foreach ((array)($_FILES['kml']['tmp_name'] ?? []) as $arq) {
+            if (!$arq || !is_uploaded_file($arq)) continue;
+            $conteudo = file_get_contents($arq);
+            if (str_starts_with($conteudo, "PK") && class_exists('ZipArchive')) { // .kmz ou .zip com vários .kml
                 $z = new ZipArchive(); $z->open($arq);
-                for ($i = 0; $i < $z->numFiles; $i++) if (str_ends_with($z->getNameIndex($i), '.kml')) { $xml = $z->getFromIndex($i); break; }
+                for ($i = 0; $i < $z->numFiles; $i++) if (str_ends_with(strtolower($z->getNameIndex($i)), '.kml')) $lidos = array_merge($lidos, ler_kml($z->getFromIndex($i)));
                 $z->close();
-            }
+            } else $lidos = array_merge($lidos, ler_kml($conteudo));
         }
-        $lidos = ler_kml($xml);
-        if (!$lidos) flash('Não achei polígonos no arquivo. No My Maps use "Exportar para KML/KMZ".', 'erro');
+        if (!$lidos) flash('Não achei polígonos. Envie .kml, .kmz ou um .zip com os .kml.', 'erro');
         else {
             if (!empty($_POST['substituir'])) db()->exec("DELETE FROM quadrantes");
             $n = (int)db()->query("SELECT COUNT(*) FROM quadrantes")->fetchColumn();
@@ -80,12 +83,12 @@ topo('Quadrantes', 'rotas', true);
 ?>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
-<link rel="stylesheet" href="assets/sacas.css?v=4">
+<link rel="stylesheet" href="assets/sacas.css?v=5">
 <a href="rotas.php" class="voltar">← Rotas</a>
 <h1>Quadrantes</h1>
 <div class="duas-colunas quadrantes">
   <div>
-    <p class="dica">Desenhe cada região no mapa com o botão de polígono (canto esquerdo). Para mudar o formato, use o botão de editar. Em cada quadrante dá para deixar um motoboy padrão.</p>
+    <p class="dica">As 19 zonas do Mercado Livre já vêm fixas no sistema. Em cada uma, escolha o motoboy padrão: ele recebe as entregas daquela zona todo dia (dá para trocar na hora de distribuir).</p>
     <?php foreach ($quads as $q): ?>
       <form method="post" class="cartao quad" style="--cor-rota:<?= e($q['cor']) ?>">
         <?= csrf_field() ?><input type="hidden" name="id" value="<?= $q['id'] ?>">
@@ -105,12 +108,15 @@ topo('Quadrantes', 'rotas', true);
     <?php endforeach; ?>
     <?php if (!$quads): ?><p class="vazio">Nenhum quadrante ainda. Desenhe no mapa ou importe do Google My Maps.</p><?php endif; ?>
 
+    <form method="post" class="restaurar" onsubmit="return confirm('Voltar para as 19 zonas fixas? Zonas desenhadas ou importadas por você serão apagadas.')">
+      <?= csrf_field() ?><button class="btn pequeno" name="acao" value="fixos">Restaurar as 19 zonas fixas</button>
+    </form>
     <details class="cartao importar">
-      <summary>Importar do Google My Maps (.kml / .kmz)</summary>
+      <summary>Importar outras zonas (.kml, .kmz ou .zip)</summary>
       <form method="post" enctype="multipart/form-data" class="form">
         <?= csrf_field() ?><input type="hidden" name="acao" value="kml">
-        <p class="dica">No My Maps: menu ⋮ → Exportar para KML/KMZ. Cada polígono vira um quadrante com o nome que você deu (ex.: CJ1).</p>
-        <input type="file" name="kml" accept=".kml,.kmz" required>
+        <p class="dica">Pode enviar vários .kml de uma vez ou um .zip com todos. Cada polígono vira uma zona com o nome do arquivo.</p>
+        <input type="file" name="kml[]" accept=".kml,.kmz,.zip" multiple required>
         <label class="lembrar"><input type="checkbox" name="substituir" value="1"> Apagar os quadrantes atuais antes</label>
         <button class="btn primario">Importar</button>
       </form>
