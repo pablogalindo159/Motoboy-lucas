@@ -2,6 +2,10 @@
 require __DIR__ . '/config.php';
 require __DIR__ . '/sacas.php';
 exigir('admin');
+if (($_POST['acao'] ?? '') === 'novo_link_tv' && csrf_ok()) { cfg_salvar('tv_chave', bin2hex(random_bytes(12))); redirecionar('admin.php'); }
+if (!cfg('tv_chave')) cfg_salvar('tv_chave', bin2hex(random_bytes(12)));
+$linkTv = (($_SERVER['HTTPS'] ?? '') === 'on' ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . dirname($_SERVER['SCRIPT_NAME']) . '/tv.php?chave=' . cfg('tv_chave');
+$linkTv = str_replace('//tv.php', '/tv.php', $linkTv);
 $data = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['data'] ?? '') ? $_GET['data'] : date('Y-m-d');
 topo('Painel', 'painel', true);
 ?>
@@ -16,6 +20,15 @@ topo('Painel', 'painel', true);
     <p class="dica" id="atualizado"></p>
     <a class="btn largo" href="importar_entregas.php?data=<?= e($data) ?>">Carregar lista de entregas do dia</a>
     <a class="btn largo" href="quadrantes.php" style="margin-top:.4rem">Quadrantes</a>
+    <details class="cartao tv-link">
+      <summary>Tela da TV</summary>
+      <p class="dica">Abra este link no navegador da TV. Ele mostra o mapa ao vivo sem precisar de login e não permite mudar nada.</p>
+      <input readonly value="<?= e($linkTv) ?>" onclick="this.select()">
+      <div class="acoes">
+        <a class="btn pequeno primario" href="<?= e($linkTv) ?>" target="_blank">Abrir tela da TV</a>
+        <form method="post" onsubmit="return confirm('O link antigo para de funcionar. Gerar outro?')"><?= csrf_field() ?><button class="btn pequeno" name="acao" value="novo_link_tv">Gerar novo link</button></form>
+      </div>
+    </details>
   </aside>
   <div id="mapa" class="mapa-painel"></div>
 </div>

@@ -27,6 +27,8 @@ Sistema PHP + MySQL para lançar rotas de entrega e acompanhar os motoboys no ma
 4. **Distribuir**: pelos quadrantes, ou "Dividir automático" (mesma quantidade de pacotes para quem trabalha no dia). Confira e toque em *Criar rotas*. A sequência de entrega de cada motoboy é sempre a do número da lista (.txt).
 5. No celular, o motoboy toca **Cheguei no CD**, vê a primeira entrega e as caixas (caixa 0 = entregas 0–9, caixa 10 = 10–19…), marca cada uma e toca **Sair para as entregas**. Se uma caixa for dividida com outro motoboy, aparece quais entregas são dele.
 
+**Tela da TV**: no Painel, abra "Tela da TV" e use o link no navegador da TV. Mostra o mapa ao vivo com todos os motoboys, entregas feitas e que faltam, sem precisar de login (somente leitura).
+
 Endereços já localizados ficam guardados. Com uma chave do Google (Geocoding API) em *Posição do CD*, a localização fica mais rápida e precisa.
 
 Na VPS: `apt install -y php-zip php-xml php-mbstring`. Dados do banco ficam em `config.local.php` (fora do Git).

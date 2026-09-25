@@ -23,13 +23,15 @@ function garantir_schema_v2(): void {
 garantir_schema_v2();
 
 // ---------- configurações ----------
-function cfg(string $chave, $padrao = null) {
+function &cfg_cache(): array {
     static $cache = null;
     if ($cache === null) $cache = db()->query("SELECT chave, valor FROM configuracoes")->fetchAll(PDO::FETCH_KEY_PAIR);
-    return $cache[$chave] ?? $padrao;
+    return $cache;
 }
+function cfg(string $chave, $padrao = null) { return cfg_cache()[$chave] ?? $padrao; }
 function cfg_salvar(string $chave, ?string $valor): void {
     db()->prepare("REPLACE INTO configuracoes (chave, valor) VALUES (?, ?)")->execute([$chave, $valor]);
+    $c = &cfg_cache(); $c[$chave] = $valor;
 }
 function cd_posicao(): ?array {
     $lat = cfg('cd_lat'); $lng = cfg('cd_lng');

@@ -81,3 +81,8 @@
 .primeira-linha .num-parada { min-width: 52px; height: 52px; font-size: 1.5rem; border-radius: 10px; }
 .primeira-linha b { font-size: 1.15rem; display: block; line-height: 1.25; }
 .primeira-linha small { display: block; margin-top: .2rem; }
+
+.tv-link { margin-top: .6rem; padding: .8rem; }
+.tv-link summary { cursor: pointer; font-weight: 600; }
+.tv-link input { margin: .4rem 0 .6rem; font-size: .8rem; }
+.tv-link .acoes { justify-content: flex-start; }

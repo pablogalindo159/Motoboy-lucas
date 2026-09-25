@@ -12,14 +12,15 @@ switch ($acao) {
 
 // ---------- ADMIN: dados do painel ----------
 case 'painel':
-    exigir('admin', true);
+    $chaveTv = (string)cfg('tv_chave', '');
+    if (!($chaveTv !== '' && hash_equals($chaveTv, (string)($_GET['chave'] ?? '')))) exigir('admin', true);
     $data = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['data'] ?? '') ? $_GET['data'] : date('Y-m-d');
     $s = db()->prepare("SELECT DISTINCT u.id, u.nome, u.telefone, u.placa, u.lat, u.lng, u.ultima_localizacao
                         FROM usuarios u JOIN rotas r ON r.motoboy_id = u.id AND r.data = ? ORDER BY u.nome");
     $s->execute([$data]);
     $motoboys = $s->fetchAll();
 
-    $sp = db()->prepare("SELECT p.id, p.rota_id, p.numero, p.endereco, p.numero_casa, p.bairro, p.pacotes, p.lat, p.lng, p.status, p.finalizado_em
+    $sp = db()->prepare("SELECT p.id, p.rota_id, p.numero, p.entrega, p.endereco, p.numero_casa, p.bairro, p.pacotes, p.lat, p.lng, p.status, p.finalizado_em
                          FROM paradas p JOIN rotas r ON r.id = p.rota_id WHERE r.motoboy_id = ? AND r.data = ? ORDER BY r.id, p.numero");
     $sc = db()->prepare("SELECT MAX(r.cor) cor, MAX(r.chegada_cd) chegada_cd, MAX(r.saida_cd) saida_cd, COUNT(s.id) sacas, COALESCE(SUM(s.coletada),0) coletadas
                          FROM rotas r LEFT JOIN sacas s ON s.rota_id = r.id WHERE r.motoboy_id = ? AND r.data = ?");
