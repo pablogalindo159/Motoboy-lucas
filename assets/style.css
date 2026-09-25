@@ -165,6 +165,7 @@ main.cheio > .aviso { margin: .8rem; }
 .login { max-width: 380px; margin: 6vh auto 0; padding: 1.5rem 1.4rem 2rem; text-align: center; background: #000; color: #fff; border-radius: 18px; }
 .logo-login { width: 240px; height: auto; margin: 0 auto .4rem; display: block; }
 .login .form label { color: #fff; }
+.login input { color: #111; background: #fff; caret-color: #111; }
 .login .aviso { color: var(--asfalto); }
 .login .btn.primario { background: var(--marca); border-color: var(--marca); color: #000; }
 .login .btn.primario:hover { background: #A6FF3B; }
