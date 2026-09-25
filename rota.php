@@ -74,6 +74,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
         flash('Parada voltou para pendente.');
     }
 
+    if ($acao === 'otimizar') {
+        $r = otimizar_rota($id);
+        flash("Rota reorganizada saindo do CD: {$r['paradas']} paradas, cerca de {$r['km']} km em linha reta." . ($r['sem_local'] ? " {$r['sem_local']} sem localização." : ''));
+    }
+
     if ($acao === 'trocar_motoboy') {
         db()->prepare("UPDATE rotas SET motoboy_id = ? WHERE id = ?")->execute([(int)$_POST['motoboy_id'], $id]);
         flash('Motoboy da rota alterado.');
@@ -110,6 +115,10 @@ topo('Rota ' . $rota['motoboy'], 'rotas', true);
     <p class="numeros"><b><?= $total ?></b> paradas <b><?= $pacotes ?></b> pacotes <b><?= $entregues ?></b> entregues <b><?= $total - $entregues - $falhas ?></b> faltam</p>
   </div>
   <form method="post" class="trocar">
+    <?= csrf_field() ?><input type="hidden" name="acao" value="otimizar">
+    <button class="btn">Refazer ordem saindo do CD</button>
+  </form>
+  <form method="post" class="trocar">
     <?= csrf_field() ?><input type="hidden" name="acao" value="trocar_motoboy">
     <select name="motoboy_id" onchange="this.form.submit()" aria-label="Trocar motoboy">
       <?php foreach ($motoboys as $m): ?><option value="<?= $m['id'] ?>" <?= $m['id'] == $rota['motoboy_id'] ? 'selected' : '' ?>><?= e($m['nome']) ?></option><?php endforeach; ?>
@@ -117,7 +126,7 @@ topo('Rota ' . $rota['motoboy'], 'rotas', true);
   </form>
 </div>
 
-<link rel="stylesheet" href="assets/sacas.css?v=1">
+<link rel="stylesheet" href="assets/sacas.css?v=2">
 <?php if ($sacas): $col = count(array_filter($sacas, fn($x) => $x['coletada'])); ?>
 <div class="sacas-admin" style="--cor-rota:<?= e($rota['cor'] ?: '#F2B705') ?>;--texto-rota:<?= texto_sobre($rota['cor'] ?: '#F2B705') ?>">
   <div class="faixa">Sacas: <?= $col ?> de <?= count($sacas) ?> coletadas · <?= array_sum(array_column($sacas, 'quantidade')) ?> pacotes</div>
@@ -164,11 +173,12 @@ topo('Rota ' . $rota['motoboy'], 'rotas', true);
     <p class="dica">Ponto no lugar errado? Arraste o marcador até a casa certa — salva na hora.</p>
     <div class="tabela-wrap">
       <table class="tabela">
-        <thead><tr><th>Nº</th><th>Endereço</th><th>Pacotes</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Ordem</th><th>Entrega</th><th>Endereço</th><th>Pacotes</th><th>Status</th><th></th></tr></thead>
         <tbody>
         <?php foreach ($paradas as $p): ?>
           <tr>
             <td><span class="num-parada <?= e($p['status']) ?>"><?= (int)$p['numero'] ?></span></td>
+            <td><?= $p['entrega'] ? '<b>' . (int)$p['entrega'] . '</b><br><small>caixa ' . intdiv((int)$p['entrega'], 10) * 10 . '</small>' : '—' ?></td>
             <td><?= e($p['endereco']) ?>, <?= e($p['numero_casa']) ?><?= $p['bairro'] ? ' – ' . e($p['bairro']) : '' ?>
               <?php if (!$p['lat']): ?><br><small class="txt-alerta">Sem posição no mapa</small><?php endif; ?>
               <?php if ($p['motivo']): ?><br><small>Motivo: <?= e($p['motivo']) ?></small><?php endif; ?></td>
@@ -184,7 +194,7 @@ topo('Rota ' . $rota['motoboy'], 'rotas', true);
             </td>
           </tr>
         <?php endforeach; ?>
-        <?php if (!$paradas): ?><tr><td colspan="5" class="vazio">Nenhuma parada ainda. Adicione pelo formulário ou cole a lista.</td></tr><?php endif; ?>
+        <?php if (!$paradas): ?><tr><td colspan="6" class="vazio">Nenhuma parada ainda. Adicione pelo formulário ou cole a lista.</td></tr><?php endif; ?>
         </tbody>
       </table>
     </div>
@@ -210,6 +220,10 @@ paradas.forEach(p => {
     else alert('Não foi possível salvar a nova posição.');
   });
 });
+const cd = <?= json_encode(cd_posicao()) ?>;
+if (cd) { L.marker(cd, { icon: L.divIcon({ className: '', html: '<div class="mapa-cd">CD</div>', iconSize: [34, 24], iconAnchor: [17, 12] }) }).addTo(mapa); pontos.push(cd); }
+const linha = paradas.filter(p => p.lat && p.status === 'pendente').map(p => [p.lat, p.lng]);
+if (linha.length) L.polyline(cd ? [cd, ...linha] : linha, { color: '#1B2B34', weight: 2, opacity: .45, dashArray: '4 6' }).addTo(mapa);
 if (pontos.length) mapa.fitBounds(pontos, { padding: [30, 30], maxZoom: 16 });
 </script>
 <?php rodape();

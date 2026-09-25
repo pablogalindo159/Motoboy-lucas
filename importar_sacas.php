@@ -103,7 +103,7 @@ function sugerir_motoboy(array $g, array $motoboys): string {
 
 topo('Importar sacas', 'rotas');
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=1">
+<link rel="stylesheet" href="assets/sacas.css?v=2">
 <a href="rotas.php" class="voltar">← Rotas</a>
 <h1>Importar planilha de sacas</h1>
 
@@ -120,7 +120,8 @@ topo('Importar sacas', 'rotas');
         <?php endforeach; ?></tbody>
       </table></div>
     <?php endif; ?>
-    <p><a class="btn primario" href="rotas.php?data=<?= e($res['data']) ?>">Ver rotas do dia</a>
+    <p><a class="btn primario" href="importar_entregas.php?data=<?= e($res['data']) ?>">Agora importar a lista de entregas</a>
+       <a class="btn" href="rotas.php?data=<?= e($res['data']) ?>">Ver rotas do dia</a>
        <a class="btn" href="admin.php?data=<?= e($res['data']) ?>">Abrir painel</a></p>
   </div>
 

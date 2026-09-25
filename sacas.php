@@ -172,3 +172,5 @@ function ler_planilha_sacas(string $arquivo): array {
     }
     return ['data' => $data, 'grupos' => $saida];
 }
+
+require_once __DIR__ . '/logistica.php';

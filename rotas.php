@@ -36,8 +36,14 @@ $rotuloStatus = ['aberta' => 'Aguardando', 'em_andamento' => 'Em andamento', 'fi
 
 topo('Rotas', 'rotas');
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=1">
-<div class="cabecalho-rota"><h1>Rotas</h1><a class="btn primario" href="importar_sacas.php">Importar planilha de sacas</a></div>
+<link rel="stylesheet" href="assets/sacas.css?v=2">
+<div class="cabecalho-rota"><h1>Rotas</h1>
+  <div class="acoes">
+    <a class="btn" href="cd.php">Posição do CD</a>
+    <a class="btn" href="importar_sacas.php">1. Planilha de cores</a>
+    <a class="btn primario" href="importar_entregas.php?data=<?= e($data) ?>">2. Lista de entregas</a>
+  </div>
+</div>
 <div class="duas-colunas">
   <form method="post" class="form cartao">
     <h2>Nova rota</h2>

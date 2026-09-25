@@ -19,3 +19,14 @@ Sistema PHP + MySQL para lançar rotas de entrega e acompanhar os motoboys no ma
 - **HTTPS é obrigatório** para o navegador liberar o GPS do celular.
 - A localização é enviada enquanto a página do motoboy está aberta; o sistema pede para manter a tela acesa.
 - Endereços viram coordenadas pelo Nominatim (OpenStreetMap, grátis). Se um ponto cair errado, arraste o marcador na tela da rota.
+
+## Rotina do dia (automática)
+1. **Rotas → Posição do CD** (só uma vez): marque o CD no mapa. As rotas começam dele.
+2. **1. Planilha de cores**: envie o `CONTROLE_DELIVERY` (.xlsx). Cada cor vira um motoboy com suas caixas.
+3. **2. Lista de entregas**: envie o `.txt` do dia (número, endereço, "N unidades"). Cada entrega vai para o motoboy dono da caixa dela (entregas 380–389 = caixa 380).
+4. O sistema localiza os endereços e monta a ordem de cada rota saindo do CD. Deixe a tela aberta até terminar.
+5. No celular, o motoboy toca **Cheguei no CD**, vê as caixas para pegar, marca cada uma e toca **Sair para as entregas**.
+
+Endereços já localizados ficam guardados e não são consultados de novo. Com uma chave do Google (Geocoding API) em *Posição do CD*, a localização fica mais rápida e precisa.
+
+Na VPS as extensões necessárias são: `apt install -y php-zip php-xml php-mbstring`.

@@ -32,7 +32,7 @@ $prox = $pendentes[0] ?? null;
 
 function destino(array $p): string {
     if ($p['lat']) return $p['lat'] . ',' . $p['lng'];
-    return trim($p['endereco'] . ', ' . $p['numero_casa'] . ', ' . ($p['bairro'] ? $p['bairro'] . ', ' : '') . ($p['cidade'] ?: CIDADE_PADRAO) . ' - ' . UF_PADRAO);
+    return trim($p['endereco'] . ', ' . $p['numero_casa'] . ', ' . ($p['bairro'] ? $p['bairro'] . ', ' : '') . ($p['cidade'] ? $p['cidade'] . ' - ' : '') . UF_PADRAO);
 }
 function link_gmaps(array $p): string {
     return 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' . urlencode(destino($p));
@@ -53,7 +53,7 @@ topo('Minhas entregas');
 $sacasColetadas = count(array_filter($sacas, fn($x) => $x['coletada']));
 $corRota = $rota['cor'] ?? null;
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=1">
+<link rel="stylesheet" href="assets/sacas.css?v=2">
 <div class="app-moto">
   <header class="moto-topo">
     <div>
@@ -78,8 +78,21 @@ $corRota = $rota['cor'] ?? null;
       <button class="btn grande" onclick="location.reload()">Verificar de novo</button>
     </section>
   <?php else: ?>
-    <?php if ($sacas): $todas = $sacasColetadas === count($sacas); ?>
-    <details class="sacas" id="sacas" <?= $todas ? '' : 'open' ?> style="--cor-rota:<?= e($corRota ?: '#F2B705') ?>;--texto-rota:<?= texto_sobre($corRota ?: '#F2B705') ?>">
+    <?php
+      // fases: ir ao CD -> coletar caixas -> entregas
+      $fase = 'entregas';
+      if ($sacas && !$rota['saida_cd']) $fase = $rota['chegada_cd'] ? 'coleta' : 'ir_cd';
+      $estiloCor = '--cor-rota:' . e($corRota ?: '#F2B705') . ';--texto-rota:' . texto_sobre($corRota ?: '#F2B705');
+    ?>
+    <?php if ($fase === 'ir_cd'): ?>
+    <section class="chegada" style="<?= $estiloCor ?>">
+      <div class="faixa-cor"><span class="cor-motoboy"><?= e($rota['descricao'] ?: 'Sua cor') ?></span> Sua cor de hoje</div>
+      <h1>Vá até o CD</h1>
+      <p>Hoje você tem <b><?= count($paradas) ?></b> entregas, <b><?= array_sum(array_column($sacas, 'quantidade')) ?></b> pacotes em <b><?= count($sacas) ?></b> caixas.</p>
+      <button class="btn primario grande largo" id="btn-cheguei" onclick="fase('chegou_cd')">Cheguei no CD</button>
+    </section>
+    <?php elseif ($sacas): $todas = $sacasColetadas === count($sacas); ?>
+    <details class="sacas" id="sacas" <?= $fase === 'coleta' ? 'open' : '' ?> style="<?= $estiloCor ?>">
       <summary>
         <span class="cor-motoboy"><?= e($rota['descricao'] ?: 'Sua cor') ?></span>
         <span class="titulo-sacas" id="sacas-titulo"><?= $todas ? 'Sacas coletadas' : 'Sacas para coletar' ?></span>
@@ -90,11 +103,19 @@ $corRota = $rota['cor'] ?? null;
         <?php foreach ($sacas as $sc): ?>
           <button type="button" class="saca <?= $sc['coletada'] ? 'coletada' : '' ?>" data-id="<?= $sc['id'] ?>" onclick="coletar(this)" aria-pressed="<?= $sc['coletada'] ? 'true' : 'false' ?>">
             <b><?= (int)$sc['caixa'] ?></b><small><?= (int)$sc['quantidade'] ?> pct</small>
+            <?php if (!empty($sc['compartilhada'])): ?><em>só <?= e(str_replace(',', ', ', $sc['entregas'])) ?></em><?php endif; ?>
           </button>
         <?php endforeach; ?>
       </div>
+      <?php if ($fase === 'coleta'): ?>
+      <div class="sair-cd">
+        <button class="btn primario grande largo" onclick="sairCd()">Sair para as entregas</button>
+      </div>
+      <?php endif; ?>
     </details>
     <?php endif; ?>
+
+    <?php if ($fase === 'entregas'): ?>
 
     <?php if (!$paradas): ?>
     <section class="vazio-moto">
@@ -112,10 +133,10 @@ $corRota = $rota['cor'] ?? null;
 
     <?php if ($prox): ?>
     <section class="proxima">
-      <p class="rotulo">Próxima entrega</p>
-      <div class="placa-parada"><small>Parada</small><?= (int)$prox['numero'] ?></div>
+      <p class="rotulo">Próxima entrega · parada <?= count($feitas) + 1 ?> de <?= count($paradas) ?></p>
+      <div class="placa-parada"><small><?= $prox['entrega'] ? 'Entrega' : 'Parada' ?></small><?= (int)($prox['entrega'] ?: $prox['numero']) ?></div>
       <h1 class="endereco"><?= e($prox['endereco']) ?>, <?= e($prox['numero_casa']) ?></h1>
-      <p class="bairro"><?= e($prox['bairro']) ?><?= $prox['bairro'] ? ' · ' : '' ?><?= e($prox['cidade'] ?: CIDADE_PADRAO) ?></p>
+      <p class="bairro"><?= e($prox['bairro']) ?><?= $prox['bairro'] ? ' · ' : '' ?><?= e($prox['cidade']) ?></p>
       <p class="pacotes"><b><?= (int)$prox['pacotes'] ?></b> <?= $prox['pacotes'] > 1 ? 'pacotes' : 'pacote' ?></p>
       <?php if ($prox['observacao']): ?><p class="obs"><?= e($prox['observacao']) ?></p><?php endif; ?>
 
@@ -143,7 +164,7 @@ $corRota = $rota['cor'] ?? null;
       <summary>Depois desta (<?= count($pendentes) - 1 ?>)</summary>
       <ol>
         <?php foreach (array_slice($pendentes, 1) as $p): ?>
-          <li><span class="num-parada"><?= (int)$p['numero'] ?></span><div><?= e($p['endereco']) ?>, <?= e($p['numero_casa']) ?><small><?= e($p['bairro']) ?> · <?= (int)$p['pacotes'] ?> pct</small></div>
+          <li><span class="num-parada"><?= (int)($p['entrega'] ?: $p['numero']) ?></span><div><?= e($p['endereco']) ?>, <?= e($p['numero_casa']) ?><small><?= e($p['bairro']) ?> · <?= (int)$p['pacotes'] ?> pct</small></div>
             <a href="<?= e(link_gmaps($p)) ?>" target="_blank" rel="noopener" class="btn pequeno">Ir</a></li>
         <?php endforeach; ?>
       </ol>
@@ -155,10 +176,11 @@ $corRota = $rota['cor'] ?? null;
       <summary>Já feitas (<?= count($feitas) ?>)</summary>
       <ol>
         <?php foreach ($feitas as $p): ?>
-          <li><span class="num-parada <?= e($p['status']) ?>"><?= (int)$p['numero'] ?></span><div><?= e($p['endereco']) ?>, <?= e($p['numero_casa']) ?><small><?= $p['status'] === 'entregue' ? 'Entregue' : 'Não entregue' ?> às <?= hora_br($p['finalizado_em']) ?></small></div></li>
+          <li><span class="num-parada <?= e($p['status']) ?>"><?= (int)($p['entrega'] ?: $p['numero']) ?></span><div><?= e($p['endereco']) ?>, <?= e($p['numero_casa']) ?><small><?= $p['status'] === 'entregue' ? 'Entregue' : 'Não entregue' ?> às <?= hora_br($p['finalizado_em']) ?></small></div></li>
         <?php endforeach; ?>
       </ol>
     </details>
+    <?php endif; ?>
     <?php endif; ?>
     <?php endif; ?>
   <?php endif; ?>
@@ -231,6 +253,21 @@ async function coletar(btn) {
     alert('Não foi possível marcar a saca. Confira a internet e toque de novo.');
   }
   btn.disabled = false;
+}
+
+// ---- Chegada e saída do CD ----
+const ROTA_ID = <?= (int)($rota['id'] ?? 0) ?>;
+async function fase(acao) {
+  try {
+    const r = await post({ acao, rota_id: ROTA_ID });
+    if (!r.ok) throw new Error();
+    location.reload();
+  } catch (e) { alert('Não foi possível salvar. Confira a internet e toque de novo.'); }
+}
+function sairCd() {
+  const faltam = document.querySelectorAll('.saca:not(.coletada)').length;
+  if (faltam && !confirm(`Ainda faltam ${faltam} caixa(s). Sair mesmo assim?`)) return;
+  fase('saiu_cd');
 }
 
 // ---- Localização: envia a cada 20 s ou quando andar mais de 30 m ----

@@ -5,6 +5,7 @@ exigir('admin');
 $data = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['data'] ?? '') ? $_GET['data'] : date('Y-m-d');
 topo('Painel', 'painel', true);
 ?>
+<link rel="stylesheet" href="assets/sacas.css?v=2">
 <div class="painel">
   <aside class="lateral">
     <form class="filtro-data">
@@ -13,7 +14,8 @@ topo('Painel', 'painel', true);
     <div class="resumo" id="resumo"></div>
     <div id="lista"><p class="dica">Carregando…</p></div>
     <p class="dica" id="atualizado"></p>
-    <a class="btn largo" href="importar_sacas.php">Importar planilha de sacas</a>
+    <a class="btn largo" href="importar_sacas.php">1. Importar planilha de cores (caixas)</a>
+    <a class="btn largo" href="importar_entregas.php" style="margin-top:.4rem">2. Importar lista de entregas</a>
   </aside>
   <div id="mapa" class="mapa-painel"></div>
 </div>
@@ -24,6 +26,14 @@ const mapa = L.map('mapa').setView([<?= MAPA_LAT ?>, <?= MAPA_LNG ?>], 13);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapa);
 
 const camadas = L.layerGroup().addTo(mapa);
+let marcadorCd = null;
+const hora = d => d ? d.substr(11, 5) : '';
+function etapa(m) {
+  if (!m.sacas) return '';
+  if (m.saida_cd) return `Saiu do CD às ${hora(m.saida_cd)}`;
+  if (m.chegada_cd) return `No CD desde ${hora(m.chegada_cd)} · caixas ${m.sacas_coletadas}/${m.sacas}`;
+  return 'Ainda não chegou no CD';
+}
 const cores = ['#1F5FA8', '#7A3FA0', '#0E7C7B', '#B5501B', '#4E5D6C', '#A0306B'];
 let focado = null, primeiraVez = true;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -50,6 +60,7 @@ async function carregar() {
   } catch (e) { document.getElementById('atualizado').textContent = 'Sem conexão — tentando de novo…'; return; }
 
   camadas.clearLayers();
+  if (dados.cd && !marcadorCd) marcadorCd = L.marker(dados.cd, { zIndexOffset: 2000, icon: L.divIcon({ className: '', html: '<div class="mapa-cd">CD</div>', iconSize: [34, 24], iconAnchor: [17, 12] }) }).addTo(mapa).bindPopup('Centro de distribuição');
   const limites = [];
   let tEnt = 0, tFaltam = 0, tPac = 0, tPacEnt = 0;
   const lista = document.getElementById('lista');
@@ -93,7 +104,7 @@ async function carregar() {
       <div class="topo-moto"><strong>${esc(m.nome)}</strong>${sinal(m.minutos_sem_sinal)}</div>
       <div class="contagem"><span><b>${ent}</b> entregues</span><span><b>${faltam}</b> faltam</span>${falha ? `<span><b>${falha}</b> sem sucesso</span>` : ''}</div>
       <div class="progresso"><span style="width:${pct}%"></span></div>
-      ${m.sacas ? `<small>Sacas coletadas: ${m.sacas_coletadas} de ${m.sacas}</small>` : ''}
+      ${m.sacas ? `<small>${etapa(m)}</small>` : ''}
       <small>${pacEnt} de ${pac} pacotes${prox ? ` · próxima: parada ${prox.numero}, ${esc(prox.endereco)}` : (total ? ' · rota concluída' : '')}</small>`;
     c.onclick = () => {
       focado = m.id;
