@@ -18,8 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 topo('Entrar');
 ?>
 <section class="login">
-  <div class="placa-grande">R</div>
-  <h1><?= APP_NOME ?></h1>
+  <img class="logo-login" src="assets/logo.svg" alt="<?= APP_NOME ?>" width="260" height="260">
   <?php if ($erro): ?><div class="aviso erro"><?= e($erro) ?></div><?php endif; ?>
   <form method="post" class="form">
     <label>Login<input name="login" autocomplete="username" autocapitalize="none" required autofocus></label>

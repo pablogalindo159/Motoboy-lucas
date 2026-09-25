@@ -1,11 +1,13 @@
 <?php
 // ===== CONFIGURAÇÃO =====
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'rotas_motoboy');
-define('DB_USER', 'root');
-define('DB_PASS', '');
+// Dados do banco ficam em config.local.php (fora do Git), assim o "git pull" nunca conflita.
+if (file_exists(__DIR__ . '/config.local.php')) require __DIR__ . '/config.local.php';
+defined('DB_HOST') || define('DB_HOST', 'localhost');
+defined('DB_NAME') || define('DB_NAME', 'rotas_motoboy');
+defined('DB_USER') || define('DB_USER', 'root');
+defined('DB_PASS') || define('DB_PASS', '');
 
-define('APP_NOME', 'Rotas Motoboy');
+define('APP_NOME', 'NetPoint Rotas Motoboy');
 define('CIDADE_PADRAO', 'São José dos Pinhais');
 define('UF_PADRAO', 'PR');
 // Centro inicial do mapa (São José dos Pinhais)
@@ -104,7 +106,12 @@ function topo(string $titulo, string $ativo = '', bool $mapa = false): void {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1B2B34">
+<meta name="theme-color" content="#000000">
+<link rel="icon" href="assets/icone.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="manifest" href="assets/manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="NetPoint Rotas">
 <title><?= e($titulo) ?> · <?= APP_NOME ?></title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
@@ -112,12 +119,12 @@ function topo(string $titulo, string $ativo = '', bool $mapa = false): void {
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <?php endif; ?>
-<link rel="stylesheet" href="assets/style.css?v=1">
+<link rel="stylesheet" href="assets/style.css?v=2">
 </head>
 <body>
 <?php if ($u && $u['tipo'] === 'admin'): ?>
 <header class="barra">
-  <a class="marca" href="admin.php"><span class="placa-mini">R</span><?= APP_NOME ?></a>
+  <a class="marca" href="admin.php"><img src="assets/logo-horizontal.svg" alt="<?= APP_NOME ?>" height="40"></a>
   <nav>
     <a href="admin.php" class="<?= $ativo === 'painel' ? 'ativo' : '' ?>">Painel</a>
     <a href="rotas.php" class="<?= $ativo === 'rotas' ? 'ativo' : '' ?>">Rotas</a>

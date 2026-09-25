@@ -56,7 +56,8 @@ $corRota = $rota['cor'] ?? null;
 <link rel="stylesheet" href="assets/sacas.css?v=2">
 <div class="app-moto">
   <header class="moto-topo">
-    <div>
+    <img src="assets/icone.svg" alt="" width="40" height="40" class="icone-topo">
+    <div class="quem">
       <strong><?= e($u['nome']) ?></strong>
       <span id="gps" class="gps">Ligando GPS…</span>
     </div>
