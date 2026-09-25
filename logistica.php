@@ -265,7 +265,7 @@ function quadrantes_ativos(): array {
     return $q;
 }
 
-// Região de busca de endereços: em volta das zonas (com ~3 km de folga); sem zonas, a região metropolitana.
+// Região de busca de endereços: só em volta das zonas (~1 km de folga); sem zonas, a região metropolitana.
 function regiao_busca(): array {
     static $r = null;
     if ($r !== null) return $r;
@@ -273,7 +273,7 @@ function regiao_busca(): array {
     foreach (db()->query("SELECT pontos FROM quadrantes WHERE ativo = 1")->fetchAll(PDO::FETCH_COLUMN) as $j)
         foreach (json_decode($j, true) ?: [] as $p) { $lat[] = $p[0]; $lng[] = $p[1]; }
     if (!$lat) return $r = REGIAO_BUSCA;
-    $m = 0.03;
+    $m = 0.01; // ~1 km de folga: os endereços ficam sempre perto das zonas
     return $r = [min($lng) - $m, max($lat) + $m, max($lng) + $m, min($lat) - $m];
 }
 
