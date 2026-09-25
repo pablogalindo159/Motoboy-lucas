@@ -107,3 +107,4 @@
 .voador-botoes { flex: none; display: grid; grid-template-columns: 1fr 1.6fr; gap: .6rem; padding: .8rem 1rem 1rem; }
 .voador-botoes .btn.primario { background: var(--marca); color: #000; border-color: var(--marca); }
 .dlg-voador [hidden] { display: none !important; }
+.voador-info { white-space: pre-line; }

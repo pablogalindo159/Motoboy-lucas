@@ -9,7 +9,7 @@ $linkTv = str_replace('//tv.php', '/tv.php', $linkTv);
 $data = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['data'] ?? '') ? $_GET['data'] : date('Y-m-d');
 topo('Painel', 'painel', true);
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=8">
+<link rel="stylesheet" href="assets/sacas.css?v=9">
 <div class="painel">
   <aside class="lateral">
     <form class="filtro-data">

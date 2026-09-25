@@ -459,3 +459,36 @@ function pasta_comprovantes(): string {
     if (!file_exists(__DIR__ . '/dados/index.html')) @file_put_contents(__DIR__ . '/dados/index.html', '');
     return $d;
 }
+
+// Endereço do ponto do GPS (para o carimbo do pacote voador)
+function garantir_schema_v6(): void {
+    $flag = __DIR__ . '/.schema_v6';
+    if (file_exists($flag)) return;
+    if (!db()->query("SHOW COLUMNS FROM comprovantes LIKE 'endereco_gps'")->fetch())
+        db()->exec("ALTER TABLE comprovantes ADD COLUMN endereco_gps VARCHAR(255) NULL AFTER precisao_m");
+    @touch($flag);
+}
+garantir_schema_v6();
+
+function endereco_do_ponto(float $lat, float $lng): ?string {
+    $chave = trim((string)cfg('google_key', ''));
+    if ($chave !== '') {
+        $j = http_json('https://maps.googleapis.com/maps/api/geocode/json?' . http_build_query([
+            'latlng' => "$lat,$lng", 'language' => 'pt-BR', 'result_type' => 'street_address|premise|route', 'key' => $chave]));
+        if (!empty($j['results'][0]['formatted_address']))
+            return preg_replace('/, (Brasil|Brazil)$/', '', preg_replace('/, \d{5}-\d{3}/', '', $j['results'][0]['formatted_address']));
+    }
+    $j = http_json('https://nominatim.openstreetmap.org/reverse?' . http_build_query([
+        'format' => 'jsonv2', 'lat' => $lat, 'lon' => $lng, 'zoom' => 18, 'addressdetails' => 1, 'accept-language' => 'pt-BR']),
+        ['User-Agent: RotasMotoboy/1.0 (' . EMAIL_CONTATO . ')']);
+    $a = $j['address'] ?? null;
+    if (!$a) return null;
+    $rua = $a['road'] ?? $a['pedestrian'] ?? $a['residential'] ?? $a['footway'] ?? null;
+    if (!$rua) return $j['display_name'] ?? null;
+    $txt = $rua . (!empty($a['house_number']) ? ', ' . $a['house_number'] : '');
+    $bairro = $a['suburb'] ?? $a['neighbourhood'] ?? $a['quarter'] ?? null;
+    $cidade = $a['city'] ?? $a['town'] ?? $a['municipality'] ?? null;
+    if ($bairro) $txt .= ' - ' . $bairro;
+    if ($cidade) $txt .= ', ' . $cidade;
+    return $txt;
+}

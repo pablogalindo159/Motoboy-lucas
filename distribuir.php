@@ -41,7 +41,7 @@ $iniciadas = (int)$s->fetchColumn();
 
 topo('Distribuir entregas', 'rotas', true);
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=8">
+<link rel="stylesheet" href="assets/sacas.css?v=9">
 <a href="rotas.php?data=<?= e($data) ?>" class="voltar">← Rotas</a>
 <h1>Distribuir entregas de <?= data_br($data) ?></h1>
 

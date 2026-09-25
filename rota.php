@@ -97,7 +97,7 @@ $paradas = $s->fetchAll();
 
 $fotos = [];
 if ($paradas) {
-    $s = db()->prepare("SELECT c.id, c.parada_id, c.lat, c.lng, c.precisao_m, c.criado_em FROM comprovantes c JOIN paradas p ON p.id = c.parada_id WHERE p.rota_id = ? ORDER BY c.id");
+    $s = db()->prepare("SELECT c.id, c.parada_id, c.lat, c.lng, c.precisao_m, c.endereco_gps, c.criado_em FROM comprovantes c JOIN paradas p ON p.id = c.parada_id WHERE p.rota_id = ? ORDER BY c.id");
     $s->execute([$id]);
     foreach ($s->fetchAll() as $c) $fotos[$c['parada_id']] = $c;
 }
@@ -136,7 +136,7 @@ topo('Rota ' . $rota['motoboy'], 'rotas', true);
   </form>
 </div>
 
-<link rel="stylesheet" href="assets/sacas.css?v=8">
+<link rel="stylesheet" href="assets/sacas.css?v=9">
 <?php if ($sacas): $col = count(array_filter($sacas, fn($x) => $x['coletada'])); ?>
 <div class="sacas-admin" style="--cor-rota:<?= e($rota['cor'] ?: '#8CF20A') ?>;--texto-rota:<?= texto_sobre($rota['cor'] ?: '#8CF20A') ?>">
   <div class="faixa">Sacas: <?= $col ?> de <?= count($sacas) ?> coletadas · <?= array_sum(array_column($sacas, 'quantidade')) ?> pacotes</div>
@@ -198,6 +198,7 @@ topo('Rota ' . $rota['motoboy'], 'rotas', true);
               <?php if (isset($fotos[$p['id']])): $f = $fotos[$p['id']]; ?>
                 <br><a class="link-foto" href="foto.php?id=<?= (int)$f['id'] ?>" target="_blank">📷 Pacote voador</a>
                 <?php if ($f['lat']): ?><br><small><a href="https://www.google.com/maps?q=<?= e($f['lat']) ?>,<?= e($f['lng']) ?>" target="_blank">GPS ±<?= (int)$f['precisao_m'] ?> m</a></small><?php endif; ?>
+                <?php if (!empty($f['endereco_gps'])): ?><br><small>📍 <?= e($f['endereco_gps']) ?></small><?php endif; ?>
               <?php endif; ?></td>
             <td class="acoes">
               <a class="btn pequeno" href="?id=<?= $id ?>&editar=<?= $p['id'] ?>">Editar</a>

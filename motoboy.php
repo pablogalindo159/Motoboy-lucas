@@ -59,7 +59,7 @@ topo('Minhas entregas');
 $sacasColetadas = count(array_filter($sacas, fn($x) => $x['coletada']));
 $corRota = $rota['cor'] ?? null;
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=8">
+<link rel="stylesheet" href="assets/sacas.css?v=9">
 <div class="app-moto">
   <header class="moto-topo">
     <img src="assets/icone.svg" alt="" width="40" height="40" class="icone-topo">
@@ -298,6 +298,18 @@ async function coletar(btn) {
 
 // ---- Pacote voador: foto com carimbo (entrega, endereço, data, hora e GPS) ----
 let voador = null, fluxo = null, gpsVoador = null, vigiaGps = null, fotoBlob = null;
+let endGps = null, endGpsPonto = null, endGpsBusca = null;
+// busca o endereço do ponto do GPS (no máximo uma busca por vez; de novo se andar mais de 25 m)
+function buscarEnderecoGps() {
+  if (!gpsVoador || gpsVoador.accuracy > 150) return endGpsBusca;
+  if (endGpsBusca) return endGpsBusca;
+  if (endGpsPonto && distancia(endGpsPonto, gpsVoador) < 25) return Promise.resolve(endGps);
+  const ponto = { lat: gpsVoador.lat, lng: gpsVoador.lng };
+  endGpsBusca = post({ acao: 'endereco_gps', lat: ponto.lat, lng: ponto.lng })
+    .then(r => r.json()).then(j => { if (j.endereco) { endGps = j.endereco; endGpsPonto = ponto; } atualizarInfo(); return endGps; })
+    .catch(() => endGps).finally(() => { endGpsBusca = null; });
+  return endGpsBusca;
+}
 const dlgV = () => document.getElementById('dlg-voador');
 const doisDig = n => String(n).padStart(2, '0');
 const agoraTxt = d => `${doisDig(d.getDate())}/${doisDig(d.getMonth() + 1)}/${d.getFullYear()} ${doisDig(d.getHours())}:${doisDig(d.getMinutes())}:${doisDig(d.getSeconds())}`;
@@ -309,11 +321,12 @@ function textoGps() {
   el.textContent = `GPS ±${Math.round(gpsVoador.accuracy)} m`; el.className = gpsVoador.accuracy <= 50 ? 'ok' : 'fraco';
 }
 function atualizarInfo() {
-  document.getElementById('voador-info').textContent = `Entrega ${voador.entrega} · ${voador.endereco}`;
+  document.getElementById('voador-info').textContent = `Entrega ${voador.entrega} · ${voador.endereco}` +
+    (endGps ? `\n📍 Você está em: ${endGps}` : (gpsVoador ? '\n📍 Buscando endereço do GPS…' : ''));
 }
 
 async function pacoteVoador(dados) {
-  voador = dados; gpsVoador = null; fotoBlob = null;
+  voador = dados; gpsVoador = null; fotoBlob = null; endGps = null; endGpsPonto = null;
   atualizarInfo(); textoGps();
   document.getElementById('voador-previa').hidden = true;
   document.getElementById('voador-video').hidden = false;
@@ -322,7 +335,7 @@ async function pacoteVoador(dados) {
   document.getElementById('voador-aviso').hidden = true;
   dlgV().showModal();
   if ('geolocation' in navigator) {
-    vigiaGps = navigator.geolocation.watchPosition(p => { if (!gpsVoador || p.coords.accuracy <= gpsVoador.accuracy || Date.now() - gpsVoador.hora > 15000) { gpsVoador = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, hora: Date.now() }; textoGps(); } },
+    vigiaGps = navigator.geolocation.watchPosition(p => { if (!gpsVoador || p.coords.accuracy <= gpsVoador.accuracy || Date.now() - gpsVoador.hora > 15000) { gpsVoador = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, hora: Date.now() }; textoGps(); buscarEnderecoGps(); } },
       () => { document.getElementById('voador-gps').textContent = 'Sem GPS'; document.getElementById('voador-gps').className = 'fraco'; },
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
   }
@@ -344,14 +357,28 @@ function pararCamera() {
 function fecharVoador() { pararCamera(); dlgV().close(); }
 dlgV().addEventListener('cancel', pararCamera);
 
-function tirarFoto() {
+async function esperarEndereco() {
+  const busca = buscarEnderecoGps();
+  if (!busca || endGps) return;
+  await Promise.race([busca, new Promise(r => setTimeout(r, 4000))]);
+}
+async function tirarFoto() {
   const video = document.getElementById('voador-video');
-  if (fluxo && video.videoWidth) return carimbar(video, video.videoWidth, video.videoHeight);
+  if (fluxo && video.videoWidth) {
+    const bt = document.getElementById('voador-tirar');
+    // congela o quadro na hora do toque e só depois espera o endereço
+    const quadro = document.createElement('canvas'); quadro.width = video.videoWidth; quadro.height = video.videoHeight;
+    quadro.getContext('2d').drawImage(video, 0, 0);
+    bt.disabled = true; bt.textContent = 'Carimbando…';
+    await esperarEndereco();
+    bt.disabled = false; bt.textContent = 'Tirar foto';
+    return carimbar(quadro, quadro.width, quadro.height);
+  }
   const inp = document.getElementById('voador-arquivo');
   inp.onchange = () => {
     const f = inp.files[0]; if (!f) return;
     const img = new Image();
-    img.onload = () => carimbar(img, img.naturalWidth, img.naturalHeight);
+    img.onload = async () => { await esperarEndereco(); carimbar(img, img.naturalWidth, img.naturalHeight); };
     img.src = URL.createObjectURL(f);
   };
   inp.click();
@@ -370,6 +397,7 @@ function carimbar(fonte, w, h) {
     voador.endereco,
     agoraTxt(d),
     gpsVoador ? `GPS ${gpsVoador.lat.toFixed(6)}, ${gpsVoador.lng.toFixed(6)} (±${Math.round(gpsVoador.accuracy)} m)` : 'GPS indisponível',
+    ...(gpsVoador ? [`Local GPS: ${endGps || 'endereço não encontrado'}`] : []),
     `Motoboy: ${voador.motoboy} · NetPoint Rotas`,
   ];
   const alt = pad * 2 + lh * linhas.length;
@@ -383,6 +411,7 @@ function carimbar(fonte, w, h) {
   });
   voador.tiradaEm = agoraSql(d);
   voador.gps = gpsVoador ? { ...gpsVoador } : null;
+  voador.endGps = endGps;
   c.toBlob(b => {
     fotoBlob = b;
     const prev = document.getElementById('voador-previa');
@@ -412,6 +441,7 @@ async function salvarVoador() {
   fd.append('foto', fotoBlob, `entrega-${voador.entrega}.jpg`);
   fd.append('tirada_em', voador.tiradaEm);
   if (voador.gps) { fd.append('lat', voador.gps.lat); fd.append('lng', voador.gps.lng); fd.append('precisao', Math.round(voador.gps.accuracy)); }
+  if (voador.endGps) fd.append('endereco_gps', voador.endGps);
   try {
     const r = await fetch('api.php', { method: 'POST', body: fd, headers: { 'X-CSRF': CSRF } });
     const j = await r.json().catch(() => ({}));

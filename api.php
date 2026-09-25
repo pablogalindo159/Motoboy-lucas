@@ -127,6 +127,13 @@ case 'saiu_cd':
     $s->execute([(int)($_POST['rota_id'] ?? 0), $u['id']]);
     responder(['ok' => $s->rowCount() >= 0]);
 
+// ---------- MOTOBOY: endereço do ponto do GPS (para o carimbo da foto) ----------
+case 'endereco_gps':
+    exigir('motoboy', true);
+    $lat = (float)($_POST['lat'] ?? 0); $lng = (float)($_POST['lng'] ?? 0);
+    if (!$lat || !$lng) responder(['erro' => 'Posição inválida'], 422);
+    responder(['endereco' => endereco_do_ponto($lat, $lng)]);
+
 // ---------- MOTOBOY: pacote voador (foto com GPS, data, hora e nº da entrega) ----------
 case 'pacote_voador':
     $u = exigir('motoboy', true);
@@ -147,8 +154,9 @@ case 'pacote_voador':
     if (!move_uploaded_file($f['tmp_name'], pasta_comprovantes() . '/' . $nome)) responder(['erro' => 'Não foi possível salvar a foto no servidor.'], 500);
     $num = fn($k) => isset($_POST[$k]) && is_numeric($_POST[$k]) ? (float)$_POST[$k] : null;
     $tirada = preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $_POST['tirada_em'] ?? '') ? $_POST['tirada_em'] : null;
-    db()->prepare("INSERT INTO comprovantes (parada_id, motoboy_id, tipo, arquivo, lat, lng, precisao_m, tirada_em) VALUES (?,?,?,?,?,?,?,?)")
-        ->execute([$p['id'], $u['id'], 'pacote_voador', $nome, $num('lat'), $num('lng'), $num('precisao') !== null ? (int)$num('precisao') : null, $tirada]);
+    $endGps = mb_substr(trim((string)($_POST['endereco_gps'] ?? '')), 0, 255) ?: null;
+    db()->prepare("INSERT INTO comprovantes (parada_id, motoboy_id, tipo, arquivo, lat, lng, precisao_m, endereco_gps, tirada_em) VALUES (?,?,?,?,?,?,?,?,?)")
+        ->execute([$p['id'], $u['id'], 'pacote_voador', $nome, $num('lat'), $num('lng'), $num('precisao') !== null ? (int)$num('precisao') : null, $endGps, $tirada]);
     if ($p['status'] === 'pendente') {
         db()->prepare("UPDATE paradas SET status = 'entregue', motivo = 'Pacote voador (foto)', finalizado_em = NOW() WHERE id = ?")->execute([$p['id']]);
         atualizar_status_rota((int)$p['rota_id']);
