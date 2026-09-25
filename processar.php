@@ -5,7 +5,7 @@ exigir('admin');
 $data = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['data'] ?? '') ? $_GET['data'] : date('Y-m-d');
 topo('Montando rotas', 'rotas');
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=5">
+<link rel="stylesheet" href="assets/sacas.css?v=7">
 <h1>Localizando as entregas de <?= data_br($data) ?></h1>
 <div class="cartao processo">
   <p id="etapa">Localizando endereços no mapa…</p>

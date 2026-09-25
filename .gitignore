@@ -2,3 +2,4 @@
 .DS_Store
 .schema_*
 config.local.php
+dados/

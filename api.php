@@ -127,6 +127,34 @@ case 'saiu_cd':
     $s->execute([(int)($_POST['rota_id'] ?? 0), $u['id']]);
     responder(['ok' => $s->rowCount() >= 0]);
 
+// ---------- MOTOBOY: pacote voador (foto com GPS, data, hora e nº da entrega) ----------
+case 'pacote_voador':
+    $u = exigir('motoboy', true);
+    $s = db()->prepare("SELECT p.id, p.rota_id, p.status FROM paradas p JOIN rotas r ON r.id = p.rota_id WHERE p.id = ? AND r.motoboy_id = ?");
+    $s->execute([(int)($_POST['parada_id'] ?? 0), $u['id']]);
+    $p = $s->fetch();
+    if (!$p) responder(['erro' => 'Entrega não encontrada'], 404);
+    $f = $_FILES['foto'] ?? null;
+    if (!$f || $f['error'] !== UPLOAD_ERR_OK) responder(['erro' => 'A foto não chegou. Tente de novo.'], 422);
+    if ($f['size'] > 8 * 1024 * 1024) responder(['erro' => 'Foto muito grande.'], 422);
+    $info = @getimagesize($f['tmp_name']);
+    if (!$info || !in_array($info[2], [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_WEBP], true)) responder(['erro' => 'Arquivo não é uma foto.'], 422);
+    $ext = [IMAGETYPE_JPEG => 'jpg', IMAGETYPE_PNG => 'png', IMAGETYPE_WEBP => 'webp'][$info[2]];
+    $sub = date('Y-m');
+    $dir = pasta_comprovantes() . '/' . $sub;
+    if (!is_dir($dir)) @mkdir($dir, 0750, true);
+    $nome = $sub . '/' . bin2hex(random_bytes(16)) . '.' . $ext;
+    if (!move_uploaded_file($f['tmp_name'], pasta_comprovantes() . '/' . $nome)) responder(['erro' => 'Não foi possível salvar a foto no servidor.'], 500);
+    $num = fn($k) => isset($_POST[$k]) && is_numeric($_POST[$k]) ? (float)$_POST[$k] : null;
+    $tirada = preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $_POST['tirada_em'] ?? '') ? $_POST['tirada_em'] : null;
+    db()->prepare("INSERT INTO comprovantes (parada_id, motoboy_id, tipo, arquivo, lat, lng, precisao_m, tirada_em) VALUES (?,?,?,?,?,?,?,?)")
+        ->execute([$p['id'], $u['id'], 'pacote_voador', $nome, $num('lat'), $num('lng'), $num('precisao') !== null ? (int)$num('precisao') : null, $tirada]);
+    if ($p['status'] === 'pendente') {
+        db()->prepare("UPDATE paradas SET status = 'entregue', motivo = 'Pacote voador (foto)', finalizado_em = NOW() WHERE id = ?")->execute([$p['id']]);
+        atualizar_status_rota((int)$p['rota_id']);
+    }
+    responder(['ok' => true]);
+
 default:
     responder(['erro' => 'Ação desconhecida'], 400);
 }

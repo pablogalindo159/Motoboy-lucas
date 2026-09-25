@@ -29,6 +29,12 @@ $pendentes = array_values(array_filter($paradas, fn($p) => $p['status'] === 'pen
 $feitas = array_values(array_filter($paradas, fn($p) => $p['status'] !== 'pendente'));
 $entregues = count(array_filter($paradas, fn($p) => $p['status'] === 'entregue'));
 $prox = $pendentes[0] ?? null;
+$comFoto = [];
+if ($paradas) {
+    $s = db()->prepare("SELECT parada_id, MAX(id) id FROM comprovantes WHERE parada_id IN (" . implode(',', array_map('intval', array_column($paradas, 'id'))) . ") GROUP BY parada_id");
+    $s->execute();
+    $comFoto = array_column($s->fetchAll(), 'id', 'parada_id');
+}
 
 function destino(array $p): string {
     if ($p['lat']) return $p['lat'] . ',' . $p['lng'];
@@ -53,7 +59,7 @@ topo('Minhas entregas');
 $sacasColetadas = count(array_filter($sacas, fn($x) => $x['coletada']));
 $corRota = $rota['cor'] ?? null;
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=5">
+<link rel="stylesheet" href="assets/sacas.css?v=7">
 <div class="app-moto">
   <header class="moto-topo">
     <img src="assets/icone.svg" alt="" width="40" height="40" class="icone-topo">
@@ -159,6 +165,11 @@ $corRota = $rota['cor'] ?? null;
         <button class="btn sucesso grande" onclick="marcar(<?= $prox['id'] ?>, 'entregue')">Entregue</button>
         <button class="btn perigo grande" onclick="naoEntregue(<?= $prox['id'] ?>)">Não entregue</button>
       </div>
+      <button class="btn largo voador" onclick='pacoteVoador(<?= json_encode([
+          "id" => (int)$prox["id"], "entrega" => (int)($prox["entrega"] ?: $prox["numero"]),
+          "endereco" => $prox["endereco"] . ", " . $prox["numero_casa"], "motoboy" => $u["nome"]], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_TAG | JSON_HEX_AMP) ?>)'>
+        <span aria-hidden="true">📦</span> Pacote voador <small>foto com GPS · marca como entregue</small>
+      </button>
       <?php if (count($pendentes) > 1): ?>
         <a class="btn largo" href="<?= e(link_rota_completa($pendentes)) ?>" target="_blank" rel="noopener">Fazer a rota completa (<?= min(10, count($pendentes)) ?> próximas paradas)</a>
       <?php endif; ?>
@@ -187,7 +198,7 @@ $corRota = $rota['cor'] ?? null;
       <summary>Já feitas (<?= count($feitas) ?>)</summary>
       <ol>
         <?php foreach ($feitas as $p): ?>
-          <li><span class="num-parada <?= e($p['status']) ?>"><?= (int)($p['entrega'] ?: $p['numero']) ?></span><div><?= e($p['endereco']) ?>, <?= e($p['numero_casa']) ?><small><?= $p['status'] === 'entregue' ? 'Entregue' : 'Não entregue' ?> às <?= hora_br($p['finalizado_em']) ?></small></div></li>
+          <li><span class="num-parada <?= e($p['status']) ?>"><?= (int)($p['entrega'] ?: $p['numero']) ?></span><div><?= e($p['endereco']) ?>, <?= e($p['numero_casa']) ?><small><?= $p['status'] === 'entregue' ? 'Entregue' : 'Não entregue' ?> às <?= hora_br($p['finalizado_em']) ?><?php if (isset($comFoto[$p['id']])): ?> · <a href="foto.php?id=<?= (int)$comFoto[$p['id']] ?>" target="_blank">📷 foto</a><?php endif; ?></small></div></li>
         <?php endforeach; ?>
       </ol>
     </details>
@@ -196,6 +207,25 @@ $corRota = $rota['cor'] ?? null;
     <?php endif; ?>
   <?php endif; ?>
 </div>
+
+<dialog id="dlg-voador" class="dlg-voador">
+  <div class="voador-topo"><b>📦 Pacote voador</b> <span id="voador-gps">Obtendo GPS…</span></div>
+  <div class="voador-camera">
+    <video id="voador-video" playsinline muted autoplay></video>
+    <img id="voador-previa" alt="Foto registrada" hidden>
+    <p id="voador-aviso" class="voador-aviso" hidden></p>
+  </div>
+  <p class="voador-info" id="voador-info"></p>
+  <div class="voador-botoes" id="voador-b-foto">
+    <button class="btn grande" onclick="fecharVoador()">Cancelar</button>
+    <button class="btn primario grande" id="voador-tirar" onclick="tirarFoto()">Tirar foto</button>
+  </div>
+  <div class="voador-botoes" id="voador-b-salvar" hidden>
+    <button class="btn grande" onclick="refazerFoto()">Refazer</button>
+    <button class="btn sucesso grande" id="voador-salvar" onclick="salvarVoador()">Salvar e marcar entregue</button>
+  </div>
+  <input type="file" id="voador-arquivo" accept="image/*" capture="environment" hidden>
+</dialog>
 
 <dialog id="dlg-motivo">
   <form method="dialog" class="form">
@@ -264,6 +294,135 @@ async function coletar(btn) {
     alert('Não foi possível marcar a saca. Confira a internet e toque de novo.');
   }
   btn.disabled = false;
+}
+
+// ---- Pacote voador: foto com carimbo (entrega, endereço, data, hora e GPS) ----
+let voador = null, fluxo = null, gpsVoador = null, vigiaGps = null, fotoBlob = null;
+const dlgV = () => document.getElementById('dlg-voador');
+const doisDig = n => String(n).padStart(2, '0');
+const agoraTxt = d => `${doisDig(d.getDate())}/${doisDig(d.getMonth() + 1)}/${d.getFullYear()} ${doisDig(d.getHours())}:${doisDig(d.getMinutes())}:${doisDig(d.getSeconds())}`;
+const agoraSql = d => `${d.getFullYear()}-${doisDig(d.getMonth() + 1)}-${doisDig(d.getDate())} ${doisDig(d.getHours())}:${doisDig(d.getMinutes())}:${doisDig(d.getSeconds())}`;
+
+function textoGps() {
+  const el = document.getElementById('voador-gps');
+  if (!gpsVoador) { el.textContent = 'Obtendo GPS…'; el.className = ''; return; }
+  el.textContent = `GPS ±${Math.round(gpsVoador.accuracy)} m`; el.className = gpsVoador.accuracy <= 50 ? 'ok' : 'fraco';
+}
+function atualizarInfo() {
+  document.getElementById('voador-info').textContent = `Entrega ${voador.entrega} · ${voador.endereco}`;
+}
+
+async function pacoteVoador(dados) {
+  voador = dados; gpsVoador = null; fotoBlob = null;
+  atualizarInfo(); textoGps();
+  document.getElementById('voador-previa').hidden = true;
+  document.getElementById('voador-video').hidden = false;
+  document.getElementById('voador-b-foto').hidden = false;
+  document.getElementById('voador-b-salvar').hidden = true;
+  document.getElementById('voador-aviso').hidden = true;
+  dlgV().showModal();
+  if ('geolocation' in navigator) {
+    vigiaGps = navigator.geolocation.watchPosition(p => { if (!gpsVoador || p.coords.accuracy <= gpsVoador.accuracy || Date.now() - gpsVoador.hora > 15000) { gpsVoador = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, hora: Date.now() }; textoGps(); } },
+      () => { document.getElementById('voador-gps').textContent = 'Sem GPS'; document.getElementById('voador-gps').className = 'fraco'; },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
+  }
+  try {
+    fluxo = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    document.getElementById('voador-video').srcObject = fluxo;
+  } catch (e) {
+    // sem acesso direto à câmera (navegador antigo): usa a câmera do sistema
+    const av = document.getElementById('voador-aviso');
+    av.textContent = 'Toque em "Tirar foto" para abrir a câmera.'; av.hidden = false;
+    document.getElementById('voador-video').hidden = true;
+  }
+}
+
+function pararCamera() {
+  if (fluxo) { fluxo.getTracks().forEach(t => t.stop()); fluxo = null; }
+  if (vigiaGps !== null) { navigator.geolocation.clearWatch(vigiaGps); vigiaGps = null; }
+}
+function fecharVoador() { pararCamera(); dlgV().close(); }
+dlgV().addEventListener('cancel', pararCamera);
+
+function tirarFoto() {
+  const video = document.getElementById('voador-video');
+  if (fluxo && video.videoWidth) return carimbar(video, video.videoWidth, video.videoHeight);
+  const inp = document.getElementById('voador-arquivo');
+  inp.onchange = () => {
+    const f = inp.files[0]; if (!f) return;
+    const img = new Image();
+    img.onload = () => carimbar(img, img.naturalWidth, img.naturalHeight);
+    img.src = URL.createObjectURL(f);
+  };
+  inp.click();
+}
+
+function carimbar(fonte, w, h) {
+  const d = new Date();
+  const max = 1600, esc = Math.min(1, max / Math.max(w, h));
+  const W = Math.round(w * esc), H = Math.round(h * esc);
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  g.drawImage(fonte, 0, 0, W, H);
+  const fs = Math.max(16, Math.round(W / 38)), lh = fs * 1.35, pad = fs * .7;
+  const linhas = [
+    `PACOTE VOADOR · ENTREGA ${voador.entrega}`,
+    voador.endereco,
+    agoraTxt(d),
+    gpsVoador ? `GPS ${gpsVoador.lat.toFixed(6)}, ${gpsVoador.lng.toFixed(6)} (±${Math.round(gpsVoador.accuracy)} m)` : 'GPS indisponível',
+    `Motoboy: ${voador.motoboy} · NetPoint Rotas`,
+  ];
+  const alt = pad * 2 + lh * linhas.length;
+  g.fillStyle = 'rgba(0,0,0,.72)'; g.fillRect(0, H - alt, W, alt);
+  g.fillStyle = '#8CF20A'; g.fillRect(0, H - alt, Math.max(6, fs * .35), alt);
+  g.textBaseline = 'top';
+  linhas.forEach((t, i) => {
+    g.font = `${i === 0 ? '800' : '600'} ${i === 0 ? Math.round(fs * 1.15) : fs}px system-ui, sans-serif`;
+    g.fillStyle = i === 0 ? '#8CF20A' : '#FFFFFF';
+    g.fillText(t, pad + fs * .5, H - alt + pad + lh * i, W - pad * 2);
+  });
+  voador.tiradaEm = agoraSql(d);
+  voador.gps = gpsVoador ? { ...gpsVoador } : null;
+  c.toBlob(b => {
+    fotoBlob = b;
+    const prev = document.getElementById('voador-previa');
+    prev.src = URL.createObjectURL(b); prev.hidden = false;
+    document.getElementById('voador-video').hidden = true;
+    document.getElementById('voador-aviso').hidden = true;
+    document.getElementById('voador-b-foto').hidden = true;
+    document.getElementById('voador-b-salvar').hidden = false;
+    if (fluxo) fluxo.getTracks().forEach(t => t.enabled = false);
+  }, 'image/jpeg', 0.82);
+}
+
+function refazerFoto() {
+  fotoBlob = null;
+  document.getElementById('voador-previa').hidden = true;
+  document.getElementById('voador-b-salvar').hidden = true;
+  document.getElementById('voador-b-foto').hidden = false;
+  if (fluxo) { fluxo.getTracks().forEach(t => t.enabled = true); document.getElementById('voador-video').hidden = false; }
+}
+
+async function salvarVoador() {
+  if (!fotoBlob) return;
+  if (!voador.gps && !confirm('A foto ficou sem GPS. Salvar mesmo assim?')) return;
+  const bt = document.getElementById('voador-salvar'); bt.disabled = true; bt.textContent = 'Enviando…';
+  const fd = new FormData();
+  fd.append('acao', 'pacote_voador'); fd.append('parada_id', voador.id);
+  fd.append('foto', fotoBlob, `entrega-${voador.entrega}.jpg`);
+  fd.append('tirada_em', voador.tiradaEm);
+  if (voador.gps) { fd.append('lat', voador.gps.lat); fd.append('lng', voador.gps.lng); fd.append('precisao', Math.round(voador.gps.accuracy)); }
+  try {
+    const r = await fetch('api.php', { method: 'POST', body: fd, headers: { 'X-CSRF': CSRF } });
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 401) { location.href = 'index.php'; return; }
+    if (!r.ok) throw new Error(j.erro || 'Falha ao enviar');
+    if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
+    pararCamera(); location.reload();
+  } catch (e) {
+    alert(e.message + '. Confira a internet e toque em Salvar de novo.');
+    bt.disabled = false; bt.textContent = 'Salvar e marcar entregue';
+  }
 }
 
 // ---- Chegada e saída do CD ----

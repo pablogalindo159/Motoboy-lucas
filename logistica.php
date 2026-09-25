@@ -427,3 +427,35 @@ function criar_rotas_do_dia(string $data, array $grupos): array {
     foreach ($rotas as $rid) recalcular_sacas_rota($rid);
     return $rotas;
 }
+
+// =====================================================================
+// Comprovantes com foto ("pacote voador")
+// =====================================================================
+function garantir_schema_v5(): void {
+    $flag = __DIR__ . '/.schema_v5';
+    if (file_exists($flag)) return;
+    db()->exec("CREATE TABLE IF NOT EXISTS comprovantes (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        parada_id INT NOT NULL,
+        motoboy_id INT NOT NULL,
+        tipo VARCHAR(30) NOT NULL DEFAULT 'pacote_voador',
+        arquivo VARCHAR(120) NOT NULL,
+        lat DECIMAL(10,7) NULL,
+        lng DECIMAL(10,7) NULL,
+        precisao_m INT NULL,
+        tirada_em DATETIME NULL,
+        criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX (parada_id),
+        FOREIGN KEY (parada_id) REFERENCES paradas(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    @touch($flag);
+}
+garantir_schema_v5();
+
+// Pasta das fotos: fora do acesso direto, os arquivos só saem pelo foto.php (com login)
+function pasta_comprovantes(): string {
+    $d = __DIR__ . '/dados/comprovantes';
+    if (!is_dir($d)) @mkdir($d, 0750, true);
+    if (!file_exists(__DIR__ . '/dados/index.html')) @file_put_contents(__DIR__ . '/dados/index.html', '');
+    return $d;
+}

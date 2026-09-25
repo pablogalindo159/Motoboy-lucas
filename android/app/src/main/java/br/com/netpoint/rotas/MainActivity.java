@@ -14,6 +14,7 @@ import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
+import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -32,6 +33,7 @@ public class MainActivity extends Activity {
     private GeolocationPermissions.Callback geoCallback;
     private String geoOrigem;
     private Intent rastreioPendente;
+    private PermissionRequest cameraPendente;
 
     @Override
     protected void onCreate(Bundle salvo) {
@@ -47,6 +49,7 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setGeolocationEnabled(true);
         s.setSupportMultipleWindows(false);
+        s.setMediaPlaybackRequiresUserGesture(false); // prévia da câmera do pacote voador
         s.setUserAgentString(s.getUserAgentString() + " NetPointApp/" + BuildConfigVersao());
 
         CookieManager.getInstance().setAcceptCookie(true);
@@ -83,6 +86,22 @@ public class MainActivity extends Activity {
                     geoOrigem = origem;
                     pedirPermissoes();
                 }
+            }
+
+            // câmera para o "pacote voador" (só para o próprio sistema)
+            @Override
+            public void onPermissionRequest(final PermissionRequest req) {
+                runOnUiThread(() -> {
+                    boolean querCamera = false;
+                    for (String r : req.getResources()) if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(r)) querCamera = true;
+                    if (!querCamera || !doServidor(req.getOrigin())) { req.deny(); return; }
+                    if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                        req.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+                    } else {
+                        cameraPendente = req;
+                        requestPermissions(new String[]{Manifest.permission.CAMERA}, 2);
+                    }
+                });
             }
         });
 
@@ -133,6 +152,13 @@ public class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int codigo, String[] perms, int[] res) {
         super.onRequestPermissionsResult(codigo, perms, res);
+        if (codigo == 2 && cameraPendente != null) {
+            if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
+                cameraPendente.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+            else cameraPendente.deny();
+            cameraPendente = null;
+            return;
+        }
         boolean ok = temLocalizacao();
         if (geoCallback != null) {
             geoCallback.invoke(geoOrigem, ok, false);
