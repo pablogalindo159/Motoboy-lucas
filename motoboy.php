@@ -686,7 +686,9 @@ if (GPS_LIGADO) {
 // no app Android: Firebase (instantâneo) quando disponível; senão o serviço que confere a cada ~45 s
 window.registrarTokenFcm = token => post({ acao: 'registrar_token', token }).catch(() => {});
 if (APP) {
-  if (TEM_FCM) { registrarTokenFcm(APP.tokenFcm()); if (!GPS_LIGADO && APP.desligarAvisos) APP.desligarAvisos(); }
+  // o app 1.0.5 fechava ao receber "desligar"; só pede para o 1.0.6 em diante
+  const versaoApp = +((navigator.userAgent.match(/NetPointApp\/1\.0\.(\d+)/) || [])[1] || 0);
+  if (TEM_FCM) { registrarTokenFcm(APP.tokenFcm()); if (!GPS_LIGADO && APP.desligarAvisos && versaoApp >= 6) APP.desligarAvisos(); }
   else if (APP.ligarAvisos) APP.ligarAvisos(new URL('api.php', location.href).href, ultimoAviso);
 }
 
