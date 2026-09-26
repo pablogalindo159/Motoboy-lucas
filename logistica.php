@@ -511,11 +511,11 @@ function criar_rotas_por_motoboy(string $data, array $porMoto): array {
     $pdo->beginTransaction();
     try {
         $pdo->prepare("DELETE FROM rotas WHERE data = ?")->execute([$data]);
-        $insR = $pdo->prepare("INSERT INTO rotas (motoboy_id, data, descricao, cor) VALUES (?,?,?,?)");
+        $insR = $pdo->prepare("INSERT INTO rotas (motoboy_id, data, descricao, cor, valor_entrega) VALUES (?,?,?,?,(SELECT valor_entrega FROM usuarios WHERE id = ?))");
         $insP = $pdo->prepare("INSERT INTO paradas (rota_id, numero, entrega, endereco, numero_casa, cidade, pacotes, lat, lng, geo_tentado) VALUES (?,?,?,?,?,'',?,?,?,1)");
         $rotas = [];
         foreach ($porMoto as $mid => $m) {
-            $insR->execute([$mid, $data, implode(' + ', $m['nomes']), $m['cor']]);
+            $insR->execute([$mid, $data, implode(' + ', $m['nomes']), $m['cor'], $mid]);
             $rid = (int)$pdo->lastInsertId(); $rotas[] = $rid;
             usort($m['entregas'], fn($a, $b) => $a['entrega'] <=> $b['entrega']);
             $n = 0;
@@ -602,3 +602,76 @@ function garantir_schema_v7(): void {
     @touch($flag);
 }
 garantir_schema_v7();
+
+// =====================================================================
+// Financeiro: valor por entrega e pagamentos quinzenais
+// =====================================================================
+function garantir_schema_v8(): void {
+    $flag = __DIR__ . '/.schema_v8';
+    if (file_exists($flag)) return;
+    $col = fn($t, $c) => (bool)db()->query("SHOW COLUMNS FROM $t LIKE '$c'")->fetch();
+    if (!$col('usuarios', 'valor_entrega')) db()->exec("ALTER TABLE usuarios ADD COLUMN valor_entrega DECIMAL(10,2) NULL");
+    if (!$col('rotas', 'valor_entrega'))    db()->exec("ALTER TABLE rotas ADD COLUMN valor_entrega DECIMAL(10,2) NULL");
+    db()->exec("CREATE TABLE IF NOT EXISTS pagamentos (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        motoboy_id INT NOT NULL,
+        periodo_inicio DATE NOT NULL,
+        periodo_fim DATE NOT NULL,
+        entregas INT NOT NULL,
+        valor_entregas DECIMAL(10,2) NOT NULL,
+        ajuste DECIMAL(10,2) NOT NULL DEFAULT 0,
+        valor_total DECIMAL(10,2) NOT NULL,
+        observacao VARCHAR(255) NULL,
+        pago_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY (motoboy_id, periodo_inicio),
+        FOREIGN KEY (motoboy_id) REFERENCES usuarios(id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    @touch($flag);
+}
+garantir_schema_v8();
+
+function dinheiro($v): string { return 'R$ ' . number_format((float)$v, 2, ',', '.'); }
+
+/** Quinzena a partir de "2026-09-1" (dias 1–15) ou "2026-09-2" (16–fim). Sem chave: a quinzena de hoje. */
+function quinzena(?string $chave = null): array {
+    if (!$chave || !preg_match('/^(\d{4})-(\d{2})-([12])$/', $chave, $m)) {
+        $chave = date('Y-m') . '-' . ((int)date('d') <= 15 ? 1 : 2);
+        preg_match('/^(\d{4})-(\d{2})-([12])$/', $chave, $m);
+    }
+    [$ano, $mes, $q] = [(int)$m[1], (int)$m[2], (int)$m[3]];
+    $ultimo = (int)date('t', mktime(0, 0, 0, $mes, 1, $ano));
+    $ini = sprintf('%04d-%02d-%02d', $ano, $mes, $q === 1 ? 1 : 16);
+    $fim = sprintf('%04d-%02d-%02d', $ano, $mes, $q === 1 ? 15 : $ultimo);
+    $meses = ['', 'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+    $ant = $q === 2 ? sprintf('%04d-%02d-1', $ano, $mes) : date('Y-m', mktime(0, 0, 0, $mes - 1, 1, $ano)) . '-2';
+    $prox = $q === 1 ? sprintf('%04d-%02d-2', $ano, $mes) : date('Y-m', mktime(0, 0, 0, $mes + 1, 1, $ano)) . '-1';
+    return ['chave' => sprintf('%04d-%02d-%d', $ano, $mes, $q), 'ini' => $ini, 'fim' => $fim, 'ant' => $ant, 'prox' => $prox,
+            'rotulo' => ($q === 1 ? '1ª' : '2ª') . " quinzena de {$meses[$mes]}/$ano", 'dias' => sprintf('%02d a %02d/%02d', $q === 1 ? 1 : 16, $q === 1 ? 15 : $ultimo, $mes)];
+}
+
+/** Entregas feitas por motoboy no período, com o valor de cada rota (guardado no dia) e o detalhe por dia. */
+function apuracao(string $ini, string $fim): array {
+    $s = db()->prepare("
+        SELECT r.id rota_id, r.motoboy_id, r.data, COALESCE(r.valor_entrega, u.valor_entrega) valor,
+               COALESCE(SUM(p.status = 'entregue'), 0) entregues, COALESCE(SUM(p.status = 'falhou'), 0) falhas,
+               COALESCE(SUM(p.status = 'pendente'), 0) pendentes,
+               COALESCE(SUM(CASE WHEN p.status = 'entregue' THEN p.pacotes ELSE 0 END), 0) pacotes
+        FROM rotas r JOIN usuarios u ON u.id = r.motoboy_id LEFT JOIN paradas p ON p.rota_id = r.id
+        WHERE r.data BETWEEN ? AND ? GROUP BY r.id ORDER BY r.data");
+    $s->execute([$ini, $fim]);
+    $out = [];
+    foreach ($s->fetchAll() as $r) {
+        $m = &$out[(int)$r['motoboy_id']];
+        $m['entregues'] = ($m['entregues'] ?? 0) + (int)$r['entregues'];
+        $m['falhas'] = ($m['falhas'] ?? 0) + (int)$r['falhas'];
+        $m['pendentes'] = ($m['pendentes'] ?? 0) + (int)$r['pendentes'];
+        $m['pacotes'] = ($m['pacotes'] ?? 0) + (int)$r['pacotes'];
+        $m['valor'] = ($m['valor'] ?? 0) + (int)$r['entregues'] * (float)$r['valor'];
+        $m['sem_valor'] = ($m['sem_valor'] ?? false) || ($r['valor'] === null && (int)$r['entregues'] > 0);
+        $m['valores'] ??= [];
+        if ($r['valor'] !== null && (int)$r['entregues'] > 0) $m['valores'][number_format((float)$r['valor'], 2, '.', '')] = true;
+        $m['dias'][] = ['data' => $r['data'], 'entregues' => (int)$r['entregues'], 'falhas' => (int)$r['falhas'], 'valor' => $r['valor'] === null ? null : (float)$r['valor']];
+        unset($m);
+    }
+    return $out;
+}

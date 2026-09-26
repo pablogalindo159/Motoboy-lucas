@@ -58,8 +58,8 @@ if ($acao === 'confirmar' && csrf_ok() && !empty($_SESSION['import_sacas'])) {
             $s->execute([$mid, $data]);
             $rotaId = (int)$s->fetchColumn();
             if (!$rotaId) {
-                $pdo->prepare("INSERT INTO rotas (motoboy_id, data, descricao, cor) VALUES (?,?,?,?)")
-                    ->execute([$mid, $data, $g['rota'] ?: null, $g['cor']]);
+                $pdo->prepare("INSERT INTO rotas (motoboy_id, data, descricao, cor, valor_entrega) VALUES (?,?,?,?,(SELECT valor_entrega FROM usuarios WHERE id = ?))")
+                    ->execute([$mid, $data, $g['rota'] ?: null, $g['cor'], $mid]);
                 $rotaId = (int)$pdo->lastInsertId();
             } else {
                 $pdo->prepare("UPDATE rotas SET cor = ?, descricao = COALESCE(NULLIF(descricao,''), ?) WHERE id = ?")
@@ -103,7 +103,7 @@ function sugerir_motoboy(array $g, array $motoboys): string {
 
 topo('Importar sacas', 'rotas');
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=11">
+<link rel="stylesheet" href="assets/sacas.css?v=12">
 <a href="rotas.php" class="voltar">← Rotas</a>
 <h1>Importar planilha de sacas</h1>
 

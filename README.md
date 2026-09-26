@@ -39,3 +39,7 @@ Link fixo da versão mais nova: https://github.com/pablogalindo159/Motoboy-lucas
 
 O app abre o sistema em tela cheia e, enquanto o motoboy tem entregas pendentes, envia a localização mesmo com o Waze/Google Maps na frente (notificação fixa "Enviando sua localização").
 Endereço do servidor: `android/app/src/main/res/values/strings.xml` (`url_servidor`).
+
+## Financeiro
+Menu **Financeiro** (só admin): entregas feitas por motoboy na quinzena (1–15 e 16–fim do mês), valor a pagar, ajuste (bônus/vale), marcar como pago, planilha e impressão.
+O valor por entrega fica no cadastro do motoboy e é guardado em cada rota no dia em que ela é criada. Só conta o que foi marcado como Entregue.

@@ -9,8 +9,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
         $mid = (int)($_POST['motoboy_id'] ?? 0);
         $data = $_POST['data'] ?? date('Y-m-d');
         if (!$mid) { flash('Escolha o motoboy.', 'erro'); redirecionar('rotas.php'); }
-        db()->prepare("INSERT INTO rotas (motoboy_id, data, descricao) VALUES (?,?,?)")
-            ->execute([$mid, $data, trim($_POST['descricao'] ?? '')]);
+        db()->prepare("INSERT INTO rotas (motoboy_id, data, descricao, valor_entrega) VALUES (?,?,?,(SELECT valor_entrega FROM usuarios WHERE id = ?))")
+            ->execute([$mid, $data, trim($_POST['descricao'] ?? ''), $mid]);
         flash('Rota criada. Agora lance as paradas.');
         redirecionar('rota.php?id=' . db()->lastInsertId());
     }
@@ -36,7 +36,7 @@ $rotuloStatus = ['aberta' => 'Aguardando', 'em_andamento' => 'Em andamento', 'fi
 
 topo('Rotas', 'rotas');
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=11">
+<link rel="stylesheet" href="assets/sacas.css?v=12">
 <div class="cabecalho-rota"><h1>Rotas</h1>
   <div class="acoes">
     <a class="btn" href="cd.php">Posição do CD</a>

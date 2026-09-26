@@ -19,6 +19,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
     $senha = $_POST['senha'] ?? '';
     $pmin = ($_POST['pacotes_min'] ?? '') !== '' ? max(0, (int)$_POST['pacotes_min']) : null;
     $pmax = ($_POST['pacotes_max'] ?? '') !== '' ? max(1, (int)$_POST['pacotes_max']) : null;
+    $valorTxt = str_replace(['R$', ' ', '.'], '', trim($_POST['valor_entrega'] ?? ''));
+    $valor = $valorTxt !== '' && is_numeric(str_replace(',', '.', $valorTxt)) ? round((float)str_replace(',', '.', $valorTxt), 2) : null;
     if ($pmin !== null && $pmax !== null && $pmin > $pmax) { flash('O mínimo não pode ser maior que o máximo.', 'erro'); redirecionar('motoboys.php' . ($id ? "?editar=$id" : '')); }
     if ($dados[0] === '' || $dados[1] === '') { flash('Preencha nome e login.', 'erro'); redirecionar('motoboys.php'); }
     if (!$id && strlen($senha) < 4) { flash('Defina uma senha com pelo menos 4 caracteres.', 'erro'); redirecionar('motoboys.php'); }
@@ -28,12 +30,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
             db()->prepare("UPDATE usuarios SET nome=?, login=?, telefone=?, placa=? WHERE id=? AND tipo='motoboy'")
                 ->execute([...$dados, $id]);
             if ($senha !== '') db()->prepare("UPDATE usuarios SET senha_hash=? WHERE id=?")->execute([password_hash($senha, PASSWORD_DEFAULT), $id]);
-            db()->prepare("UPDATE usuarios SET pacotes_min=?, pacotes_max=? WHERE id=?")->execute([$pmin, $pmax, $id]);
+            db()->prepare("UPDATE usuarios SET pacotes_min=?, pacotes_max=?, valor_entrega=? WHERE id=?")->execute([$pmin, $pmax, $valor, $id]);
+            // rotas que ainda não tinham valor passam a usar este (as que já tinham ficam com o valor do dia)
+            db()->prepare("UPDATE rotas SET valor_entrega = ? WHERE motoboy_id = ? AND valor_entrega IS NULL")->execute([$valor, $id]);
             flash('Motoboy atualizado.');
         } else {
             db()->prepare("INSERT INTO usuarios (nome, login, telefone, placa, senha_hash, tipo) VALUES (?,?,?,?,?,'motoboy')")
                 ->execute([...$dados, password_hash($senha, PASSWORD_DEFAULT)]);
-            db()->prepare("UPDATE usuarios SET pacotes_min=?, pacotes_max=? WHERE id=?")->execute([$pmin, $pmax, db()->lastInsertId()]);
+            db()->prepare("UPDATE usuarios SET pacotes_min=?, pacotes_max=?, valor_entrega=? WHERE id=?")->execute([$pmin, $pmax, $valor, db()->lastInsertId()]);
             flash('Motoboy cadastrado.');
         }
     } catch (PDOException $ex) {
@@ -66,6 +70,8 @@ topo('Motoboys', 'motoboys');
       <label>Máximo de pacotes<input name="pacotes_max" type="number" min="1" inputmode="numeric" value="<?= e($editar['pacotes_max'] ?? '') ?>" placeholder="ex.: 110"></label>
     </div>
     <p class="dica">Padrão do motoboy. Todo dia dá para ajustar na hora de distribuir.</p>
+    <label>Valor por entrega feita (R$)<input name="valor_entrega" inputmode="decimal" value="<?= $editar && $editar['valor_entrega'] !== null ? e(number_format((float)$editar['valor_entrega'], 2, ',', '')) : '' ?>" placeholder="ex.: 3,50"></label>
+    <p class="dica">Mudou o valor? Vale para as rotas criadas daqui para frente; as já criadas ficam com o valor do dia.</p>
     <label>Login de acesso<input name="login" autocapitalize="none" value="<?= e($editar['login'] ?? '') ?>" required></label>
     <label>Senha <?= $editar ? '<small>(deixe em branco para manter)</small>' : '' ?>
       <input name="senha" type="password" <?= $editar ? '' : 'required minlength="4"' ?>></label>
@@ -75,7 +81,7 @@ topo('Motoboys', 'motoboys');
 
   <div class="tabela-wrap">
     <table class="tabela">
-      <thead><tr><th>Nome</th><th>Telefone</th><th>Placa</th><th>Pacotes (mín–máx)</th><th>Login</th><th>Última posição</th><th></th></tr></thead>
+      <thead><tr><th>Nome</th><th>Telefone</th><th>Placa</th><th>Pacotes (mín–máx)</th><th>R$/entrega</th><th>Login</th><th>Última posição</th><th></th></tr></thead>
       <tbody>
       <?php foreach ($lista as $m): ?>
         <tr class="<?= $m['ativo'] ? '' : 'inativo' ?>">
@@ -83,6 +89,7 @@ topo('Motoboys', 'motoboys');
           <td><?= e($m['telefone']) ?></td>
           <td><?= e($m['placa']) ?></td>
           <td><?= $m['pacotes_min'] !== null || $m['pacotes_max'] !== null ? e(($m['pacotes_min'] ?? '0') . '–' . ($m['pacotes_max'] ?? '∞')) : '—' ?></td>
+          <td><?= $m['valor_entrega'] !== null ? dinheiro($m['valor_entrega']) : '<span class="txt-alerta">definir</span>' ?></td>
           <td><?= e($m['login']) ?></td>
           <td><?= $m['ultima_localizacao'] ? date('d/m H:i', strtotime($m['ultima_localizacao'])) : '—' ?></td>
           <td class="acoes">
@@ -92,7 +99,7 @@ topo('Motoboys', 'motoboys');
           </td>
         </tr>
       <?php endforeach; ?>
-      <?php if (!$lista): ?><tr><td colspan="7" class="vazio">Cadastre o primeiro motoboy no formulário ao lado.</td></tr><?php endif; ?>
+      <?php if (!$lista): ?><tr><td colspan="8" class="vazio">Cadastre o primeiro motoboy no formulário ao lado.</td></tr><?php endif; ?>
       </tbody>
     </table>
   </div>

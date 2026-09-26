@@ -124,3 +124,35 @@
 .acima-max .decisao p { margin: 0 0 .4rem; }
 .acima-max label { display: flex; gap: .5rem; align-items: flex-start; padding: .35rem 0; cursor: pointer; }
 .acima-max input[type=radio] { width: auto; margin-top: .2rem; accent-color: #000; }
+
+/* financeiro */
+.financeiro-topo h1 { margin-bottom: .3rem; }
+.quinzena { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.quinzena b { font-size: 1.1rem; }
+.quinzena span { color: var(--suave); }
+.resumo-fin { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .8rem; margin-bottom: 1rem; }
+.resumo-fin div { background: #000; color: #fff; border-radius: var(--raio); padding: .9rem 1rem; }
+.resumo-fin span { display: block; font-size: .85rem; color: #BFC4BC; }
+.resumo-fin b { font-family: var(--fonte-placa); font-size: 1.8rem; color: var(--marca); }
+.resumo-fin b.pago { color: #7EE2A8; }
+.resumo-fin b.falta { color: #FFD666; }
+.tabela.fin td { vertical-align: top; }
+.tabela.fin .linha-paga td { background: #F3FAF5; }
+.dias summary { cursor: pointer; font-size: .85rem; color: var(--suave); margin-top: .3rem; }
+.dias table { font-size: .85rem; margin-top: .3rem; border-collapse: collapse; }
+.dias td { padding: .15rem .6rem .15rem 0; border: 0; white-space: nowrap; }
+.pagar summary { list-style: none; display: inline-flex; }
+.pagar summary::-webkit-details-marker { display: none; }
+.pagar[open] summary { margin-bottom: .6rem; }
+.pagar .form { min-width: 240px; }
+.so-imprimir { display: none; }
+@media print {
+  .barra, .nao-imprimir, .quinzena .btn, .dica { display: none !important; }
+  .so-imprimir { display: inline; }
+  body { background: #fff; }
+  main.conteudo { padding: 0; max-width: none; }
+  .resumo-fin div { background: #fff; color: #000; border: 1px solid #999; }
+  .resumo-fin b, .resumo-fin b.pago, .resumo-fin b.falta { color: #000; }
+  .dias[open] summary, .dias summary { color: #000; }
+  .tabela-wrap { border: 0; }
+}

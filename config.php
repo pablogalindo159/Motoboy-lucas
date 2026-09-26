@@ -138,6 +138,7 @@ function topo(string $titulo, string $ativo = '', bool $mapa = false): void {
     <a href="admin.php" class="<?= $ativo === 'painel' ? 'ativo' : '' ?>">Painel</a>
     <a href="rotas.php" class="<?= $ativo === 'rotas' ? 'ativo' : '' ?>">Rotas</a>
     <a href="motoboys.php" class="<?= $ativo === 'motoboys' ? 'ativo' : '' ?>">Motoboys</a>
+    <a href="financeiro.php" class="<?= $ativo === 'financeiro' ? 'ativo' : '' ?>">Financeiro</a>
     <a href="senha.php" class="<?= $ativo === 'senha' ? 'ativo' : '' ?>">Minha senha</a>
     <a href="logout.php">Sair</a>
   </nav>
