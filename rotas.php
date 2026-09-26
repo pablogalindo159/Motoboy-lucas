@@ -45,9 +45,9 @@ $rotas = $s->fetchAll();
 
 // todas as entregas da lista do dia, com o motoboy que ficou com cada uma (ou sem motoboy) e a zona
 $s = db()->prepare("
-  SELECT e.id, e.entrega, e.rua, e.numero_casa, e.pacotes, e.lat, e.lng, e.bairro, e.geo_status, x.status, x.nome motoboy, x.cor
+  SELECT e.id, e.entrega, e.rua, e.numero_casa, e.pacotes, e.lat, e.lng, e.bairro, e.geo_status, x.status, x.nome motoboy, x.motoboy_id, x.cor
   FROM entregas e
-  LEFT JOIN (SELECT p.entrega, p.status, u.nome, r.cor FROM paradas p JOIN rotas r ON r.id = p.rota_id JOIN usuarios u ON u.id = r.motoboy_id
+  LEFT JOIN (SELECT p.entrega, p.status, u.nome, r.motoboy_id, r.cor FROM paradas p JOIN rotas r ON r.id = p.rota_id JOIN usuarios u ON u.id = r.motoboy_id
              WHERE r.data = ? AND p.entrega IS NOT NULL) x ON x.entrega = e.entrega
   WHERE e.data = ? ORDER BY e.entrega");
 $s->execute([$data, $data]);
@@ -62,13 +62,21 @@ foreach ($lista as &$it) {
     $it['zona'] = $qid !== null ? $perto . ($it['bairro'] ? ' · ' . $it['bairro'] : '') : ($perto ? "fora · " . ($dist >= 1000 ? number_format($dist / 1000, 1, ',', '') . ' km' : round($dist) . ' m') . " de $perto" : null);
 }
 unset($it);
+// motoboys que aparecem na lista do dia (para o filtro), com quantas entregas e pacotes cada um
+$motosLista = [];
+foreach ($lista as $it) if ($it['motoboy']) {
+    $m = &$motosLista[(int)$it['motoboy_id']];
+    $m['nome'] = $it['motoboy']; $m['n'] = ($m['n'] ?? 0) + 1; $m['pac'] = ($m['pac'] ?? 0) + (int)$it['pacotes'];
+    unset($m);
+}
+uasort($motosLista, fn($a, $b) => strcmp($a['nome'], $b['nome']));
 $contagem = ['todas' => count($lista), 'sem' => count(array_filter($lista, fn($i) => !$i['motoboy'])), 'fora' => count(array_filter($lista, fn($i) => $i['fora']))];
 $rotStatus = ['pendente' => 'Pendente', 'entregue' => 'Entregue', 'falhou' => 'Não entregue'];
 $rotuloStatus = ['aberta' => 'Aguardando', 'em_andamento' => 'Em andamento', 'finalizada' => 'Finalizada'];
 
 topo('Rotas', 'rotas');
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=23">
+<link rel="stylesheet" href="assets/sacas.css?v=26">
 <div class="cabecalho-rota"><h1>Rotas</h1>
   <div class="acoes">
     <a class="btn" href="cd.php">Posição do CD</a>
@@ -136,6 +144,10 @@ topo('Rotas', 'rotas');
     <button type="button" class="ativo" data-f="todas">Todas <b><?= $contagem['todas'] ?></b></button>
     <button type="button" data-f="sem">Sem motoboy <b><?= $contagem['sem'] ?></b></button>
     <button type="button" data-f="fora">Fora dos bairros / quadrantes <b><?= $contagem['fora'] ?></b></button>
+    <select id="filtro-motoboy" aria-label="Filtrar por motoboy">
+      <option value="">Todos os motoboys</option>
+      <?php foreach ($motosLista as $mid => $m): ?><option value="<?= $mid ?>"><?= e($m['nome']) ?> (<?= $m['n'] ?> entregas · <?= $m['pac'] ?> pct)</option><?php endforeach; ?>
+    </select>
   </div>
   <p class="dica" id="achados"></p>
   <?php if ($contagem['sem']): ?>
@@ -156,7 +168,7 @@ topo('Rotas', 'rotas');
       <thead><tr><th>Nº</th><th>Endereço</th><th>Pacotes</th><th>Zona</th><th>Motoboy</th><th>Situação</th></tr></thead>
       <tbody id="corpo-lista">
       <?php foreach ($lista as $it): ?>
-        <tr data-num="<?= (int)$it['entrega'] ?>" data-busca="<?= e(sem_acento($it['rua'] . ' ' . $it['numero_casa'])) ?>" data-sem="<?= $it['motoboy'] ? 0 : 1 ?>" data-fora="<?= $it['fora'] ? 1 : 0 ?>">
+        <tr data-moto="<?= (int)($it['motoboy_id'] ?? 0) ?>" data-num="<?= (int)$it['entrega'] ?>" data-busca="<?= e(sem_acento($it['rua'] . ' ' . $it['numero_casa'])) ?>" data-sem="<?= $it['motoboy'] ? 0 : 1 ?>" data-fora="<?= $it['fora'] ? 1 : 0 ?>">
           <td><?php if (!$it['motoboy']): ?><input type="checkbox" class="chk-sem" form="f-passar" name="entregas[]" value="<?= (int)$it['id'] ?>" onchange="contarSel()" aria-label="Selecionar entrega <?= (int)$it['entrega'] ?>"> <?php endif; ?><span class="num-parada"><?= (int)$it['entrega'] ?></span></td>
           <td><?= e($it['rua']) ?>, <?= e($it['numero_casa']) ?></td>
           <td><?= (int)$it['pacotes'] ?></td>
@@ -177,21 +189,29 @@ topo('Rotas', 'rotas');
   const busca = document.getElementById('busca'), linhas = [...document.querySelectorAll('#corpo-lista tr')], achados = document.getElementById('achados');
   const semAcento = t => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   let filtro = 'todas';
+  const selMoto = document.getElementById('filtro-motoboy');
   function aplicar() {
     const q = semAcento(busca.value.trim());
     const soNumero = /^\d+$/.test(q);
     let n = 0;
     linhas.forEach(tr => {
       let ok = filtro === 'todas' || (filtro === 'sem' && tr.dataset.sem === '1') || (filtro === 'fora' && tr.dataset.fora === '1');
+      if (ok && selMoto && selMoto.value) ok = tr.dataset.moto === selMoto.value;
       if (ok && q) ok = soNumero ? tr.dataset.num === q || tr.dataset.num.startsWith(q) : tr.dataset.busca.includes(q);
       tr.hidden = !ok; if (ok) n++;
     });
-    achados.textContent = q || filtro !== 'todas' ? `${n} de ${linhas.length} entregas` : '';
+    const pac = linhas.filter(tr => !tr.hidden).reduce((s, tr) => s + (+tr.children[2].textContent || 0), 0);
+    achados.textContent = q || filtro !== 'todas' || (selMoto && selMoto.value) ? `${n} de ${linhas.length} entregas · ${pac} pacotes` : '';
     // número exato: destaca e leva até ela
     linhas.forEach(tr => tr.classList.toggle('achada', soNumero && tr.dataset.num === q));
   }
   window.contarSel = () => { const n = document.querySelectorAll('.chk-sem:checked').length, b = document.getElementById('btn-passar'); if (b) { b.disabled = !n; b.textContent = n ? `Passar ${n} selecionada${n > 1 ? 's' : ''}` : 'Passar selecionadas'; } };
   busca.addEventListener('input', aplicar);
+  if (selMoto) selMoto.addEventListener('change', () => {
+    // escolheu um motoboy: mostra todas as dele (os botões "sem motoboy" e "fora" não se aplicam juntos)
+    if (selMoto.value && filtro === 'sem') { filtro = 'todas'; document.querySelectorAll('.filtros button').forEach(x => x.classList.toggle('ativo', x.dataset.f === 'todas')); }
+    aplicar();
+  });
   document.querySelectorAll('.filtros button').forEach(b => b.addEventListener('click', () => {
     document.querySelectorAll('.filtros button').forEach(x => x.classList.remove('ativo'));
     b.classList.add('ativo'); filtro = b.dataset.f; aplicar();

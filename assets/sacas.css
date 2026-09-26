@@ -299,3 +299,4 @@ tr.achada td { background: #EEFBD9; }
 .paginas { display: flex; gap: .8rem; align-items: center; justify-content: center; margin-top: 1rem; }
 .notif-corpo small b { display: inline; }
 .notif.nova.alta { border-left-color: var(--vermelho); }
+.filtros select { width: auto; border-radius: 99px; padding: .45rem .9rem; font-weight: 600; }
