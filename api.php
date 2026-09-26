@@ -254,6 +254,7 @@ case 'avisos':
         $out['versao'] = versao_motoboy((int)$u['id']);
     } else {
         $out['socorros_abertos'] = (int)db()->query("SELECT COUNT(*) FROM pedidos_socorro WHERE status = 'aberto'")->fetchColumn();
+        $out['nao_lidas'] = avisos_nao_lidos((int)$u['id']);
     }
     responder($out);
 

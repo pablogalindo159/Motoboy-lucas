@@ -1334,3 +1334,9 @@ function garantir_schema_v16(): void {
     @touch($flag);
 }
 garantir_schema_v16();
+
+/** Notificações do admin ainda não vistas na página Notificações. */
+function avisos_nao_lidos(int $uid): int {
+    $lido = (int)cfg('avisos_lidos_' . $uid, 0);
+    return (int)db()->query("SELECT COUNT(*) FROM avisos WHERE para_tipo = 'admin' AND id > $lido")->fetchColumn();
+}

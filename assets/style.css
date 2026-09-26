@@ -236,3 +236,7 @@ dialog .form label { flex-direction: row; align-items: center; gap: .6rem; font-
 .sino.ligado { opacity: 1; }
 .faixa-sos { display: flex; flex-wrap: wrap; gap: .5rem .8rem; align-items: center; background: var(--vermelho); color: #fff; padding: .7rem 1.2rem; font-size: 1.02rem; }
 .faixa-sos .btn { background: #fff; color: var(--vermelho); border-color: #fff; }
+.sino { position: relative; text-decoration: none; }
+.sino.ativo { background: var(--marca); border-radius: 6px; opacity: 1; }
+.badge-sino { position: absolute; top: -2px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--vermelho); color: #fff; font: 700 11px/18px system-ui, sans-serif; text-align: center; }
+.sino, .sino.ligado { opacity: 1; }

@@ -128,7 +128,7 @@ function topo(string $titulo, string $ativo = '', bool $mapa = false): void {
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <?php endif; ?>
-<link rel="stylesheet" href="assets/style.css?v=6">
+<link rel="stylesheet" href="assets/style.css?v=8">
 </head>
 <body>
 <?php if ($u && $u['tipo'] === 'admin'): ?>
@@ -140,7 +140,8 @@ function topo(string $titulo, string $ativo = '', bool $mapa = false): void {
     <a href="motoboys.php" class="<?= $ativo === 'motoboys' ? 'ativo' : '' ?>">Motoboys</a>
     <a href="financeiro.php" class="<?= $ativo === 'financeiro' ? 'ativo' : '' ?>">Financeiro</a>
     <a href="senha.php" class="<?= $ativo === 'senha' ? 'ativo' : '' ?>">Minha senha</a>
-    <button type="button" id="btn-sino" class="sino" title="Notificações no computador" onclick="pedirNotificacao()">🔔</button>
+    <?php $naoLidas = 0; try { if (function_exists('avisos_nao_lidos')) $naoLidas = avisos_nao_lidos((int)$u['id']); } catch (Throwable $ex) {} ?>
+    <a href="notificacoes.php" id="btn-sino" class="sino <?= $ativo === 'notificacoes' ? 'ativo' : '' ?>" title="Notificações">🔔<span class="badge-sino" id="badge-sino" <?= $naoLidas ? '' : 'hidden' ?>><?= $naoLidas > 99 ? '99+' : $naoLidas ?></span></a>
     <a href="logout.php">Sair</a>
   </nav>
 </header>
@@ -161,7 +162,8 @@ function topo(string $titulo, string $ativo = '', bool $mapa = false): void {
   const CSRF_ADM = <?= json_encode(csrf_token()) ?>;
   let ultimo = null;
   const sino = document.getElementById('btn-sino');
-  const marcaSino = () => { if (!('Notification' in window)) { sino.hidden = true; return; } sino.classList.toggle('ligado', Notification.permission === 'granted'); };
+  const marcaSino = () => { const ok = 'Notification' in window && Notification.permission === 'granted'; sino.classList.toggle('ligado', ok);
+    const b = document.getElementById('estado-windows'); if (b) b.textContent = !('Notification' in window) ? 'Este navegador não mostra notificações.' : (ok ? 'Ligado ✓' : (Notification.permission === 'denied' ? 'Bloqueado no navegador (libere no cadeado da barra de endereço)' : 'Desligado')); };
   window.pedirNotificacao = async () => { if ('Notification' in window) { await Notification.requestPermission(); marcaSino(); } };
   window.resolverPedido = async id => {
     const fd = new FormData(); fd.append('acao', 'resolver_pedido'); fd.append('pedido_id', id);
@@ -185,9 +187,11 @@ function topo(string $titulo, string $ativo = '', bool $mapa = false): void {
       const j = await r.json();
       if (ultimo !== null && j.avisos.length) { j.avisos.forEach(mostrar); bip(); if (j.avisos.some(a => a.tipo === 'pedido_socorro')) setTimeout(() => location.reload(), 1500); }
       ultimo = j.ultimo;
+      const bs = document.getElementById('badge-sino');
+      if (bs && typeof j.nao_lidas === 'number' && !location.pathname.endsWith('notificacoes.php')) { bs.hidden = !j.nao_lidas; bs.textContent = j.nao_lidas > 99 ? '99+' : j.nao_lidas; }
     } catch (e) {}
   }
-  marcaSino(); conferir(); setInterval(conferir, 15000);
+  marcaSino(); document.addEventListener('DOMContentLoaded', marcaSino); conferir(); setInterval(conferir, 15000);
   // admin abrindo o painel pelo app: registra o celular para receber os alertas (socorro, recusa…)
   window.registrarTokenFcm = token => { const fd = new FormData(); fd.append('acao', 'registrar_token'); fd.append('token', token); fetch('api.php', { method: 'POST', body: fd, headers: { 'X-CSRF': CSRF_ADM } }).catch(() => {}); };
   if (window.NetPointApp && NetPointApp.temFcm && NetPointApp.temFcm()) registrarTokenFcm(NetPointApp.tokenFcm());
