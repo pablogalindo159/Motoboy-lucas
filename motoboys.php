@@ -70,7 +70,7 @@ topo('Motoboys', 'motoboys');
       <label>Máximo de pacotes<input name="pacotes_max" type="number" min="1" inputmode="numeric" value="<?= e($editar['pacotes_max'] ?? '') ?>" placeholder="ex.: 110"></label>
     </div>
     <p class="dica">Padrão do motoboy. Todo dia dá para ajustar na hora de distribuir.</p>
-    <label>Valor por entrega feita (R$)<input name="valor_entrega" inputmode="decimal" value="<?= $editar && $editar['valor_entrega'] !== null ? e(number_format((float)$editar['valor_entrega'], 2, ',', '')) : '' ?>" placeholder="ex.: 3,50"></label>
+    <label>Valor por pacote entregue (R$)<input name="valor_entrega" inputmode="decimal" value="<?= $editar && $editar['valor_entrega'] !== null ? e(number_format((float)$editar['valor_entrega'], 2, ',', '')) : '' ?>" placeholder="ex.: 3,50"></label>
     <p class="dica">Mudou o valor? Vale para as rotas criadas daqui para frente; as já criadas ficam com o valor do dia.</p>
     <label>Login de acesso<input name="login" autocapitalize="none" value="<?= e($editar['login'] ?? '') ?>" required></label>
     <label>Senha <?= $editar ? '<small>(deixe em branco para manter)</small>' : '' ?>
@@ -81,7 +81,7 @@ topo('Motoboys', 'motoboys');
 
   <div class="tabela-wrap">
     <table class="tabela">
-      <thead><tr><th>Nome</th><th>Telefone</th><th>Placa</th><th>Pacotes (mín–máx)</th><th>R$/entrega</th><th>Login</th><th>Última posição</th><th></th></tr></thead>
+      <thead><tr><th>Nome</th><th>Telefone</th><th>Placa</th><th>Pacotes (mín–máx)</th><th>R$/pacote</th><th>Login</th><th>Última posição</th><th></th></tr></thead>
       <tbody>
       <?php foreach ($lista as $m): ?>
         <tr class="<?= $m['ativo'] ? '' : 'inativo' ?>">

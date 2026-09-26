@@ -22,16 +22,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
     $mid = (int)($_POST['motoboy_id'] ?? 0);
     $acao = $_POST['acao'] ?? '';
     if ($acao === 'pagar' && isset($ap[$mid]) && $ap[$mid]['sem_valor']) {
-        flash('Defina o valor por entrega de ' . ($motoboys[$mid]['nome'] ?? '') . ' antes de pagar.', 'erro');
+        flash('Defina o valor por pacote de ' . ($motoboys[$mid]['nome'] ?? '') . ' antes de pagar.', 'erro');
     } elseif ($acao === 'pagar' && isset($ap[$mid]) && !isset($pagos[$mid])) {
         $ajuste = valor_digitado($_POST['ajuste'] ?? '0');
         $valor = round($ap[$mid]['valor'], 2);
-        db()->prepare("INSERT INTO pagamentos (motoboy_id, periodo_inicio, periodo_fim, entregas, valor_entregas, ajuste, valor_total, observacao) VALUES (?,?,?,?,?,?,?,?)")
-            ->execute([$mid, $q['ini'], $q['fim'], $ap[$mid]['entregues'], $valor, $ajuste, $valor + $ajuste, trim($_POST['observacao'] ?? '') ?: null]);
+        db()->prepare("INSERT INTO pagamentos (motoboy_id, periodo_inicio, periodo_fim, entregas, pacotes, valor_entregas, ajuste, valor_total, observacao) VALUES (?,?,?,?,?,?,?,?,?)")
+            ->execute([$mid, $q['ini'], $q['fim'], $ap[$mid]['entregues'], $ap[$mid]['pacotes'], $valor, $ajuste, $valor + $ajuste, trim($_POST['observacao'] ?? '') ?: null]);
         flash('Pagamento de ' . ($motoboys[$mid]['nome'] ?? '') . ' registrado: ' . dinheiro($valor + $ajuste) . '. Ele foi avisado no celular.');
         $obs = trim($_POST['observacao'] ?? '');
         avisar('motoboy', $mid, 'pagamento', '💰 Caiu o pagamento: ' . dinheiro($valor + $ajuste),
-               $q['rotulo'] . ' · ' . (int)$ap[$mid]['entregues'] . ' entregas' . ($ajuste != 0 ? ' · ajuste ' . ($ajuste > 0 ? '+' : '−') . dinheiro(abs($ajuste)) : '') . ($obs ? " · $obs" : ''), 'motoboy.php', 'alta');
+               $q['rotulo'] . ' · ' . (int)$ap[$mid]['pacotes'] . ' pacotes entregues' . ($ajuste != 0 ? ' · ajuste ' . ($ajuste > 0 ? '+' : '−') . dinheiro(abs($ajuste)) : '') . ($obs ? " · $obs" : ''), 'motoboy.php', 'alta');
     }
     if ($acao === 'desfazer') {
         db()->prepare("DELETE FROM pagamentos WHERE motoboy_id = ? AND periodo_inicio = ?")->execute([$mid, $q['ini']]);
@@ -43,10 +43,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
 // linhas: todos que trabalharam na quinzena ou já foram pagos nela
 $ids = array_unique(array_merge(array_keys($ap), array_keys($pagos)));
 usort($ids, fn($a, $b) => strcmp($motoboys[$a]['nome'] ?? '', $motoboys[$b]['nome'] ?? ''));
-$tot = ['entregas' => 0, 'apagar' => 0.0, 'pago' => 0.0, 'pendente' => 0.0];
+$tot = ['pacotes' => 0, 'apagar' => 0.0, 'pago' => 0.0, 'pendente' => 0.0];
 foreach ($ids as $mid) {
-    $a = $ap[$mid] ?? ['entregues' => 0, 'valor' => 0];
-    $tot['entregas'] += $a['entregues'];
+    $a = $ap[$mid] ?? ['pacotes' => 0, 'valor' => 0];
+    $tot['pacotes'] += $a['pacotes'];
     if (isset($pagos[$mid])) $tot['pago'] += (float)$pagos[$mid]['valor_total'];
     else $tot['pendente'] += $a['valor'];
 }
@@ -59,17 +59,17 @@ if (isset($_GET['csv'])) {
     $o = fopen('php://output', 'w');
     fwrite($o, "\xEF\xBB\xBF");
     fputcsv($o, ['Quinzena', $q['rotulo'] . ' (' . $q['dias'] . ')'], ';');
-    fputcsv($o, ['Motoboy', 'Entregas feitas', 'Não entregues', 'Valor por entrega', 'Valor das entregas', 'Ajuste', 'Total', 'Situação', 'Pago em', 'Observação'], ';');
+    fputcsv($o, ['Motoboy', 'Pacotes entregues', 'Entregas feitas', 'Não entregues', 'Valor por pacote', 'Valor dos pacotes', 'Ajuste', 'Total', 'Situação', 'Pago em', 'Observação'], ';');
     $n = fn($v) => number_format((float)$v, 2, ',', '');
     foreach ($ids as $mid) {
-        $a = $ap[$mid] ?? ['entregues' => 0, 'falhas' => 0, 'valor' => 0, 'valores' => []];
+        $a = $ap[$mid] ?? ['entregues' => 0, 'pacotes' => 0, 'falhas' => 0, 'valor' => 0, 'valores' => []];
         $p = $pagos[$mid] ?? null;
         $vals = array_keys($a['valores'] ?? []);
-        fputcsv($o, [$motoboys[$mid]['nome'] ?? '?', $p ? $p['entregas'] : $a['entregues'], $a['falhas'] ?? 0,
+        fputcsv($o, [$motoboys[$mid]['nome'] ?? '?', $p && $p['pacotes'] !== null ? $p['pacotes'] : $a['pacotes'], $p ? $p['entregas'] : $a['entregues'], $a['falhas'] ?? 0,
             count($vals) === 1 ? $n($vals[0]) : (count($vals) > 1 ? 'variado' : ''), $n($p ? $p['valor_entregas'] : $a['valor']), $n($p['ajuste'] ?? 0),
             $n($p ? $p['valor_total'] : $a['valor']), $p ? 'Pago' : 'A pagar', $p ? date('d/m/Y H:i', strtotime($p['pago_em'])) : '', $p['observacao'] ?? ''], ';');
     }
-    fputcsv($o, ['TOTAL', $tot['entregas'], '', '', '', '', $n($tot['apagar'])], ';');
+    fputcsv($o, ['TOTAL', $tot['pacotes'], '', '', '', '', '', $n($tot['apagar'])], ';');
     exit;
 }
 
@@ -92,7 +92,7 @@ topo('Financeiro', 'financeiro');
 </div>
 
 <div class="resumo-fin">
-  <div><span>Entregas feitas</span><b><?= $tot['entregas'] ?></b></div>
+  <div><span>Pacotes entregues</span><b><?= $tot['pacotes'] ?></b></div>
   <div><span>Total da quinzena</span><b><?= dinheiro($tot['apagar']) ?></b></div>
   <div><span>Já pago</span><b class="pago"><?= dinheiro($tot['pago']) ?></b></div>
   <div><span>Falta pagar</span><b class="falta"><?= dinheiro($tot['pendente']) ?></b></div>
@@ -102,27 +102,27 @@ topo('Financeiro', 'financeiro');
 
 <div class="tabela-wrap">
   <table class="tabela fin">
-    <thead><tr><th>Motoboy</th><th>Entregas feitas</th><th>R$ por entrega</th><th>Valor</th><th>Situação</th></tr></thead>
+    <thead><tr><th>Motoboy</th><th>Pacotes entregues</th><th>R$ por pacote</th><th>Valor</th><th>Situação</th></tr></thead>
     <tbody>
     <?php foreach ($ids as $mid):
         $mb = $motoboys[$mid] ?? ['nome' => '?', 'valor_entrega' => null];
         $a = $ap[$mid] ?? ['entregues' => 0, 'falhas' => 0, 'pendentes' => 0, 'pacotes' => 0, 'valor' => 0, 'valores' => [], 'dias' => [], 'sem_valor' => false];
         $p = $pagos[$mid] ?? null;
         $vals = array_keys($a['valores']);
-        $mudou = $p && ((int)$p['entregas'] !== (int)$a['entregues']); ?>
+        $mudou = $p && ((int)($p['pacotes'] ?? $a['pacotes']) !== (int)$a['pacotes']); ?>
       <tr class="<?= $p ? 'linha-paga' : '' ?>">
         <td><b><?= e($mb['nome']) ?></b>
           <?php if ($a['dias']): ?>
           <details class="dias"><summary><?= count($a['dias']) ?> <?= count($a['dias']) === 1 ? 'dia trabalhado' : 'dias trabalhados' ?></summary>
             <table>
               <?php foreach ($a['dias'] as $d): ?>
-                <tr><td><?= data_br($d['data']) ?></td><td><?= $d['entregues'] ?> entregas<?= $d['falhas'] ? " · {$d['falhas']} não entregues" : '' ?></td>
-                    <td><?= $d['valor'] === null ? '—' : dinheiro($d['entregues'] * $d['valor']) ?></td></tr>
+                <tr><td><?= data_br($d['data']) ?></td><td><?= $d['pacotes'] ?> pacotes <small>(<?= $d['entregues'] ?> entregas<?= $d['falhas'] ? " · {$d['falhas']} não entregues" : '' ?>)</small></td>
+                    <td><?= $d['valor'] === null ? '—' : dinheiro($d['pacotes'] * $d['valor']) ?></td></tr>
               <?php endforeach; ?>
             </table>
           </details>
           <?php endif; ?></td>
-        <td><b><?= $a['entregues'] ?></b>
+        <td><b><?= $a['pacotes'] ?></b> <small>em <?= $a['entregues'] ?> entregas</small>
           <?php if ($a['falhas']): ?><br><small><?= $a['falhas'] ?> não entregues (não pagas)</small><?php endif; ?>
           <?php if ($a['pendentes']): ?><br><small class="txt-alerta"><?= $a['pendentes'] ?> ainda pendentes</small><?php endif; ?></td>
         <td><?php if ($a['sem_valor']): ?><a class="txt-alerta" href="motoboys.php?editar=<?= $mid ?>">Definir valor</a>
@@ -139,14 +139,14 @@ topo('Financeiro', 'financeiro');
         <td>
           <?php if ($p): ?>
             <span class="selo finalizada">Pago em <?= date('d/m', strtotime($p['pago_em'])) ?></span>
-            <?php if ($mudou): ?><br><small class="txt-alerta">Mudou depois do pagamento: agora são <?= $a['entregues'] ?> entregas (<?= dinheiro($a['valor']) ?>)</small><?php endif; ?>
+            <?php if ($mudou): ?><br><small class="txt-alerta">Mudou depois do pagamento: agora são <?= $a['pacotes'] ?> pacotes (<?= dinheiro($a['valor']) ?>)</small><?php endif; ?>
             <form method="post" class="nao-imprimir" onsubmit="return confirm('Desfazer o pagamento de <?= e($mb['nome']) ?>?')">
               <?= csrf_field() ?><input type="hidden" name="q" value="<?= e($q['chave']) ?>"><input type="hidden" name="motoboy_id" value="<?= $mid ?>">
               <button class="btn pequeno" name="acao" value="desfazer">Desfazer</button>
             </form>
-          <?php elseif ($a['entregues'] > 0 && $a['sem_valor']): ?>
-            <small class="txt-alerta">Defina o valor por entrega para pagar</small>
-          <?php elseif ($a['entregues'] > 0): ?>
+          <?php elseif ($a['pacotes'] > 0 && $a['sem_valor']): ?>
+            <small class="txt-alerta">Defina o valor por pacote para pagar</small>
+          <?php elseif ($a['pacotes'] > 0): ?>
             <details class="pagar nao-imprimir">
               <summary class="btn pequeno primario">Marcar como pago</summary>
               <form method="post" class="form">
@@ -165,5 +165,5 @@ topo('Financeiro', 'financeiro');
     </tbody>
   </table>
 </div>
-<p class="dica">Conta como entrega feita tudo o que o motoboy marcou como Entregue (inclusive pacote voador). Não entregue não é pago. O valor por entrega de cada dia é o do cadastro do motoboy no dia em que a rota foi criada.</p>
+<p class="dica">O pagamento é por <b>pacote entregue</b>: uma entrega com 6 pacotes conta 6. Conta tudo o que o motoboy marcou como Entregue (inclusive pacote voador); não entregue não é pago. O valor por pacote de cada dia é o do cadastro do motoboy no dia em que a rota foi criada.</p>
 <?php rodape();

@@ -776,11 +776,11 @@ function apuracao(string $ini, string $fim): array {
         $m['falhas'] = ($m['falhas'] ?? 0) + (int)$r['falhas'];
         $m['pendentes'] = ($m['pendentes'] ?? 0) + (int)$r['pendentes'];
         $m['pacotes'] = ($m['pacotes'] ?? 0) + (int)$r['pacotes'];
-        $m['valor'] = ($m['valor'] ?? 0) + (int)$r['entregues'] * (float)$r['valor'];
-        $m['sem_valor'] = ($m['sem_valor'] ?? false) || ($r['valor'] === null && (int)$r['entregues'] > 0);
+        $m['valor'] = ($m['valor'] ?? 0) + (int)$r['pacotes'] * (float)$r['valor']; // paga por pacote entregue
+        $m['sem_valor'] = ($m['sem_valor'] ?? false) || ($r['valor'] === null && (int)$r['pacotes'] > 0);
         $m['valores'] ??= [];
-        if ($r['valor'] !== null && (int)$r['entregues'] > 0) $m['valores'][number_format((float)$r['valor'], 2, '.', '')] = true;
-        $m['dias'][] = ['data' => $r['data'], 'entregues' => (int)$r['entregues'], 'falhas' => (int)$r['falhas'], 'valor' => $r['valor'] === null ? null : (float)$r['valor']];
+        if ($r['valor'] !== null && (int)$r['pacotes'] > 0) $m['valores'][number_format((float)$r['valor'], 2, '.', '')] = true;
+        $m['dias'][] = ['data' => $r['data'], 'entregues' => (int)$r['entregues'], 'pacotes' => (int)$r['pacotes'], 'falhas' => (int)$r['falhas'], 'valor' => $r['valor'] === null ? null : (float)$r['valor']];
         unset($m);
     }
     return $out;
@@ -1324,3 +1324,13 @@ function verificar_alertas_periodicos(): void {
         }
     } catch (Throwable $ex) {}
 }
+
+// Pagamento por pacote entregue: guarda também os pacotes pagos
+function garantir_schema_v16(): void {
+    $flag = __DIR__ . '/.schema_v16';
+    if (file_exists($flag)) return;
+    if (!db()->query("SHOW COLUMNS FROM pagamentos LIKE 'pacotes'")->fetch())
+        db()->exec("ALTER TABLE pagamentos ADD COLUMN pacotes INT NULL AFTER entregas");
+    @touch($flag);
+}
+garantir_schema_v16();
