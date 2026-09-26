@@ -675,3 +675,33 @@ function apuracao(string $ini, string $fim): array {
     }
     return $out;
 }
+
+/**
+ * Divide as entregas de um quadrante entre N motoboys pela numeração da lista,
+ * com a mesma quantidade de pacotes e sem partir caixas (caixa = dezena do número).
+ */
+function dividir_por_numero(array $entregas, int $n, bool $caixasInteiras = true): array {
+    usort($entregas, fn($a, $b) => $a['entrega'] <=> $b['entrega']);
+    $blocos = [];
+    // caixas inteiras: cada bloco é uma caixa; senão, cada entrega é um bloco (divide igual, pode partir caixa)
+    foreach ($entregas as $e) $blocos[$caixasInteiras ? intdiv((int)$e['entrega'], 10) : $e['id']][] = $e;
+    $total = array_sum(array_column($entregas, 'pacotes'));
+    $alvo = $n > 0 ? $total / $n : $total;
+    $partes = array_fill(0, max(1, $n), []);
+    $acc = 0; $i = 0;
+    foreach ($blocos as $bloco) {
+        $pac = array_sum(array_column($bloco, 'pacotes'));
+        // passa para a próxima parte quando a metade da caixa já cairia além da cota desta
+        while ($i < $n - 1 && $acc + $pac / 2 > $alvo * ($i + 1)) $i++;
+        $partes[$i] = array_merge($partes[$i], $bloco);
+        $acc += $pac;
+    }
+    return $partes;
+}
+
+// Cor para a 2ª, 3ª... parte de um quadrante dividido (para não ficar igual ao outro motoboy)
+function cor_da_parte(string $cor, int $i): string {
+    if ($i === 0) return $cor;
+    $pos = array_search(strtoupper($cor), PALETA, true);
+    return PALETA[((($pos === false ? 0 : $pos) + 5 * $i) % count(PALETA))];
+}

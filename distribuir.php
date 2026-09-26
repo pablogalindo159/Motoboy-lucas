@@ -13,13 +13,38 @@ $grupos = []; $avisos = [];
 if ($modo === 'quadrantes') [$grupos, $avisos] = grupos_por_quadrante($data);
 elseif ($escolhidos) [$grupos, $avisos] = grupos_por_setor($data, $escolhidos);
 
-// motoboy escolhido em cada quadrante/setor (vem do formulário ao recalcular ou confirmar)
-if (isset($_REQUEST['motoboy']) && is_array($_REQUEST['motoboy'])) {
-    foreach ($grupos as &$g) if (array_key_exists($g['chave'], $_REQUEST['motoboy'])) $g['motoboy_id'] = $_REQUEST['motoboy'][$g['chave']] !== '' ? (int)$_REQUEST['motoboy'][$g['chave']] : null;
-    unset($g);
+// motoboys escolhidos em cada quadrante/setor (um ou mais; vem do formulário ao recalcular ou confirmar)
+$sel = isset($_REQUEST['motoboy']) && is_array($_REQUEST['motoboy']) ? $_REQUEST['motoboy'] : null;
+foreach ($grupos as &$g) {
+    $lista = $g['motoboy_id'] ? [(int)$g['motoboy_id']] : [];
+    if ($sel !== null && array_key_exists($g['chave'], $sel)) {
+        $v = is_array($sel[$g['chave']]) ? $sel[$g['chave']] : [$sel[$g['chave']]];
+        $lista = array_values(array_unique(array_filter(array_map('intval', $v))));
+    }
+    $g['motoboys'] = $lista;
 }
+unset($g);
 $nomeMoto = array_column($motoboys, 'nome', 'id');
-$pm = montar_por_motoboy($grupos);
+
+// quadrante com mais de um motoboy: divide pela numeração (caixas inteiras, pacotes iguais)
+$gruposDist = []; $divisao = [];
+$partirCaixa = !empty($_REQUEST['partir_caixa']);
+foreach ($grupos as $g) {
+    $n = count($g['motoboys']);
+    if ($n <= 1) { $g['motoboy_id'] = $g['motoboys'][0] ?? null; $gruposDist[] = $g; continue; }
+    foreach (dividir_por_numero($g['entregas'], $n, !$partirCaixa) as $i => $parte) {
+        $p = $g;
+        $p['entregas'] = $parte;
+        $p['motoboy_id'] = $g['motoboys'][$i];
+        $p['nome'] = $g['nome'] . ' (' . ($i + 1) . '/' . $n . ')';
+        $p['cor'] = cor_da_parte($g['cor'], $i);
+        $gruposDist[] = $p;
+        $nums = array_column($parte, 'entrega');
+        $divisao[$g['chave']][] = ['mid' => $g['motoboys'][$i], 'pac' => array_sum(array_column($parte, 'pacotes')),
+                                   'de' => $nums ? min($nums) : null, 'ate' => $nums ? max($nums) : null, 'cor' => $p['cor']];
+    }
+}
+$pm = montar_por_motoboy($gruposDist);
 
 // mínimo e máximo de hoje: o que foi digitado agora; se não, o padrão do cadastro
 $padroes = db()->query("SELECT id, pacotes_min, pacotes_max FROM usuarios WHERE tipo = 'motoboy'")->fetchAll(PDO::FETCH_UNIQUE);
@@ -53,7 +78,7 @@ if (($_POST['acao'] ?? '') === 'confirmar' && csrf_ok() && $equilibrar && $pende
     // quadrante: guarda o motoboy escolhido como padrão para os próximos dias
     if ($modo === 'quadrantes' && !empty($_POST['lembrar'])) {
         $up = db()->prepare("UPDATE quadrantes SET motoboy_id = ? WHERE id = ?");
-        foreach ($grupos as $g) $up->execute([$g['motoboy_id'], (int)substr($g['chave'], 1)]);
+        foreach ($grupos as $g) $up->execute([$g['motoboys'][0] ?? null, (int)substr($g['chave'], 1)]);
     }
     if (!empty($_POST['salvar_padrao'])) {
         $up = db()->prepare("UPDATE usuarios SET pacotes_min = ?, pacotes_max = ? WHERE id = ?");
@@ -65,7 +90,7 @@ if (($_POST['acao'] ?? '') === 'confirmar' && csrf_ok() && $equilibrar && $pende
     } catch (Throwable $ex) {
         flash('Erro ao criar as rotas: ' . $ex->getMessage(), 'erro'); redirecionar("distribuir.php?data=$data&modo=$modo");
     }
-    $semMoto = array_sum(array_map(fn($g) => $g['motoboy_id'] ? 0 : count($g['entregas']), $grupos));
+    $semMoto = array_sum(array_map(fn($g) => $g['motoboys'] ? 0 : count($g['entregas']), $grupos));
     $movidos = array_sum(array_column($eq['movidas'], 'pacotes'));
     flash(count($rotas) . ' rotas criadas na ordem da lista.' . ($movidos ? " $movidos pacotes remanejados para respeitar mínimo e máximo." : '') . ($semMoto ? " $semMoto entregas ficaram sem motoboy." : ''), $semMoto ? 'alerta' : 'ok');
     redirecionar('admin.php?data=' . urlencode($data));
@@ -78,7 +103,7 @@ $iniciadas = (int)$s->fetchColumn();
 
 topo('Distribuir entregas', 'rotas', true);
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=12">
+<link rel="stylesheet" href="assets/sacas.css?v=13">
 <a href="rotas.php?data=<?= e($data) ?>" class="voltar">← Rotas</a>
 <h1>Distribuir entregas de <?= data_br($data) ?></h1>
 
@@ -142,16 +167,30 @@ topo('Distribuir entregas', 'rotas', true);
         <div class="faixa"><?= e($g['nome']) ?></div>
         <div class="corpo">
           <p><b><?= count($g['entregas']) ?></b> entregas · <b><?= $pac ?></b> pacotes · <?= $cx ?> caixas</p>
-          <label>Motoboy
-            <select name="motoboy[<?= e($g['chave']) ?>]" onchange="this.form.querySelector('[value=previa]').click()">
-              <option value="">Não distribuir</option>
-              <?php foreach ($motoboys as $m): ?><option value="<?= $m['id'] ?>" <?= (int)$g['motoboy_id'] === (int)$m['id'] ? 'selected' : '' ?>><?= e($m['nome']) ?></option><?php endforeach; ?>
+          <?php $lista = $g['motoboys'] ?: [0]; if ($g['motoboys']) $lista[] = 0; // + um campo vazio para adicionar outro
+          foreach ($lista as $k => $escolhido): ?>
+          <label><?= $k === 0 ? 'Motoboy' : '' ?>
+            <select name="motoboy[<?= e($g['chave']) ?>][]" class="<?= $k > 0 && !$escolhido ? 'sel-extra' : '' ?>" onchange="this.form.querySelector('[value=previa]').click()">
+              <option value=""><?= $k === 0 ? 'Não distribuir' : ($escolhido ? 'Tirar este motoboy' : '+ adicionar outro motoboy') ?></option>
+              <?php foreach ($motoboys as $m): ?><option value="<?= $m['id'] ?>" <?= (int)$escolhido === (int)$m['id'] ? 'selected' : '' ?>><?= e($m['nome']) ?></option><?php endforeach; ?>
             </select>
           </label>
+          <?php endforeach; ?>
+          <?php if (!empty($divisao[$g['chave']])): ?>
+            <ul class="divisao">
+              <?php foreach ($divisao[$g['chave']] as $d): ?>
+                <li><span class="bolinha" style="background:<?= e($d['cor']) ?>"></span><b><?= e($nomeMoto[$d['mid']] ?? '?') ?></b>: <?= $d['pac'] ?> pacotes<?= $d['de'] !== null ? " · entregas {$d['de']} a {$d['ate']}" : '' ?></li>
+              <?php endforeach; ?>
+            </ul>
+          <?php endif; ?>
         </div>
       </div>
     <?php endforeach; ?>
     </div>
+    <?php if ($divisao): ?>
+      <label class="lembrar"><input type="checkbox" name="partir_caixa" value="1" <?= $partirCaixa ? 'checked' : '' ?> onchange="this.form.querySelector('[value=previa]').click()">
+        Quadrante com mais de um motoboy: dividir igual, mesmo partindo caixa <small>(desmarcado = cada um fica com caixas inteiras)</small></label>
+    <?php endif; ?>
     <?php if ($modo === 'quadrantes'): ?><label class="lembrar"><input type="checkbox" name="lembrar" value="1" checked> Lembrar estes motoboys nos quadrantes para os próximos dias</label><?php endif; ?>
 
     <?php if ($pm):

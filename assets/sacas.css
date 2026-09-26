@@ -156,3 +156,9 @@
   .dias[open] summary, .dias summary { color: #000; }
   .tabela-wrap { border: 0; }
 }
+
+/* quadrante com mais de um motoboy */
+.grupo .corpo label + label { margin-top: .4rem; }
+.sel-extra { border-style: dashed; color: var(--suave); }
+.divisao { list-style: none; margin: .6rem 0 0; padding: .5rem .6rem; background: var(--fundo); border-radius: 8px; font-size: .88rem; }
+.divisao li { padding: .15rem 0; }

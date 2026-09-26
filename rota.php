@@ -136,7 +136,7 @@ topo('Rota ' . $rota['motoboy'], 'rotas', true);
   </form>
 </div>
 
-<link rel="stylesheet" href="assets/sacas.css?v=12">
+<link rel="stylesheet" href="assets/sacas.css?v=13">
 <?php if ($sacas): $col = count(array_filter($sacas, fn($x) => $x['coletada'])); ?>
 <div class="sacas-admin" style="--cor-rota:<?= e($rota['cor'] ?: '#8CF20A') ?>;--texto-rota:<?= texto_sobre($rota['cor'] ?: '#8CF20A') ?>">
   <div class="faixa">Sacas: <?= $col ?> de <?= count($sacas) ?> coletadas · <?= array_sum(array_column($sacas, 'quantidade')) ?> pacotes</div>
