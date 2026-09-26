@@ -1019,3 +1019,37 @@ function adicionar_entregas_ao_motoboy(string $data, array $idsEntregas, int $mi
     atualizar_status_rota($rid);
     return count($ents);
 }
+
+// Cópia da lista anterior do dia, para poder cancelar um envio e voltar como estava
+function garantir_schema_v11(): void {
+    $flag = __DIR__ . '/.schema_v11';
+    if (file_exists($flag)) return;
+    db()->exec("CREATE TABLE IF NOT EXISTS importacoes_backup (
+        data DATE PRIMARY KEY,
+        dados LONGTEXT NOT NULL,
+        criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    @touch($flag);
+}
+garantir_schema_v11();
+
+/** Desfaz o último envio da lista do dia: volta a lista anterior (ou deixa o dia sem lista). Retorna quantas voltaram. */
+function cancelar_importacao(string $data): int {
+    $pdo = db();
+    $s = $pdo->prepare("SELECT dados FROM importacoes_backup WHERE data = ?");
+    $s->execute([$data]);
+    $anteriores = json_decode((string)$s->fetchColumn(), true) ?: [];
+    $pdo->beginTransaction();
+    try {
+        $pdo->prepare("DELETE FROM entregas WHERE data = ?")->execute([$data]);
+        if ($anteriores) {
+            $cols = array_keys($anteriores[0]);
+            $cols = array_values(array_diff($cols, ['id']));
+            $ins = $pdo->prepare("INSERT INTO entregas (" . implode(',', $cols) . ") VALUES (" . implode(',', array_fill(0, count($cols), '?')) . ")");
+            foreach ($anteriores as $e) $ins->execute(array_map(fn($c) => $e[$c], $cols));
+        }
+        $pdo->prepare("DELETE FROM importacoes_backup WHERE data = ?")->execute([$data]);
+        $pdo->commit();
+    } catch (Throwable $ex) { $pdo->rollBack(); throw $ex; }
+    return count($anteriores);
+}

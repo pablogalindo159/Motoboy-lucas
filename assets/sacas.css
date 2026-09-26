@@ -255,3 +255,4 @@ tr.achada td { background: #EEFBD9; }
 .passar-sem select { width: auto; }
 .passar-sem .link { background: none; border: 0; padding: 0; color: var(--azul); text-decoration: underline; font: inherit; cursor: pointer; }
 .chk-sem { width: auto; accent-color: #000; vertical-align: middle; }
+.controles-envio { display: flex; gap: .5rem; flex-wrap: wrap; margin: .6rem 0; }

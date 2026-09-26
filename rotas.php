@@ -68,7 +68,7 @@ $rotuloStatus = ['aberta' => 'Aguardando', 'em_andamento' => 'Em andamento', 'fi
 
 topo('Rotas', 'rotas');
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=20">
+<link rel="stylesheet" href="assets/sacas.css?v=21">
 <div class="cabecalho-rota"><h1>Rotas</h1>
   <div class="acoes">
     <a class="btn" href="cd.php">Posição do CD</a>

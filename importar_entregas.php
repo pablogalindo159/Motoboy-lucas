@@ -12,6 +12,10 @@ if (($_POST['acao'] ?? '') === 'ler' && csrf_ok()) {
 
     $pdo = db();
     $pdo->beginTransaction();
+    // guarda a lista anterior do dia (se houver) para poder cancelar este envio
+    $s = $pdo->prepare("SELECT * FROM entregas WHERE data = ? ORDER BY entrega");
+    $s->execute([$data]);
+    $pdo->prepare("REPLACE INTO importacoes_backup (data, dados) VALUES (?, ?)")->execute([$data, json_encode($s->fetchAll(), JSON_UNESCAPED_UNICODE)]);
     $pdo->prepare("DELETE FROM entregas WHERE data = ?")->execute([$data]);
     $ins = $pdo->prepare("INSERT INTO entregas (data, entrega, rua, numero_casa, pacotes, lat, lng, bairro, geo_status, geo_tentado) VALUES (?,?,?,?,?,?,?,?,?,?)");
     foreach ($lido['itens'] as $it) {

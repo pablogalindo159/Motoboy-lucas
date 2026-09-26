@@ -106,6 +106,14 @@ case 'geocodificar_lote':
     $t = $c->fetch();
     responder(['total' => (int)$t['total'], 'pendentes' => (int)$t['pendentes'], 'sem_local' => (int)$t['sem_local'], 'fora_bairro' => (int)$t['fora_bairro']]);
 
+// ---------- ADMIN: cancelar o envio da lista (volta a anterior) ----------
+case 'cancelar_importacao':
+    exigir('admin', true);
+    $data = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['data'] ?? '') ? $_POST['data'] : date('Y-m-d');
+    $n = cancelar_importacao($data);
+    flash($n ? "Envio cancelado. A lista anterior deste dia voltou ($n entregas)." : 'Envio cancelado. Este dia ficou sem lista de entregas.', 'alerta');
+    responder(['ok' => true, 'restauradas' => $n]);
+
 // ---------- ADMIN: montar a ordem de todas as rotas do dia ----------
 case 'otimizar_dia':
     exigir('admin', true);
