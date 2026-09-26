@@ -810,3 +810,71 @@ function cancelar_ambulancia(int $sid): void {
     } catch (Throwable $ex) { $pdo->rollBack(); throw $ex; }
     foreach ([$x['rota_origem'], $x['rota_destino']] as $rid) { recalcular_sacas_rota((int)$rid); atualizar_status_rota((int)$rid); }
 }
+
+/**
+ * Sugere quem socorrer a rota: quem termina a própria rota mais perto do motoboy parado,
+ * com menos entregas faltando e com espaço no máximo de pacotes; boys livres pela distância até ele.
+ * Retorna a lista ordenada (melhor primeiro).
+ */
+function sugerir_socorristas(int $rotaId): array {
+    $s = db()->prepare("SELECT r.*, u.lat ulat, u.lng ulng, u.ultima_localizacao FROM rotas r JOIN usuarios u ON u.id = r.motoboy_id WHERE r.id = ?");
+    $s->execute([$rotaId]);
+    $r = $s->fetch();
+    if (!$r) return [];
+    $s = db()->prepare("SELECT lat, lng, pacotes FROM paradas WHERE rota_id = ? AND status = 'pendente' ORDER BY numero");
+    $s->execute([$rotaId]);
+    $resgate = $s->fetchAll();
+    if (!$resgate) return [];
+    $comPos = array_values(array_filter($resgate, fn($p) => $p['lat'] !== null));
+    $ponto = $r['ulat'] ? [(float)$r['ulat'], (float)$r['ulng']] : ($comPos ? [(float)$comPos[0]['lat'], (float)$comPos[0]['lng']] : cd_posicao());
+    $pacResgate = array_sum(array_column($resgate, 'pacotes'));
+
+    // pendências de cada motoboy no dia
+    $s = db()->prepare("SELECT r.motoboy_id, p.lat, p.lng, p.pacotes, p.status FROM paradas p JOIN rotas r ON r.id = p.rota_id
+                        WHERE r.data = ? ORDER BY r.motoboy_id, r.id, p.numero");
+    $s->execute([$r['data']]);
+    $dia = [];
+    foreach ($s->fetchAll() as $p) {
+        $m = &$dia[(int)$p['motoboy_id']];
+        $m['total'] = ($m['total'] ?? 0) + 1;
+        if ($p['status'] === 'pendente') {
+            $m['pend'] = ($m['pend'] ?? 0) + 1;
+            $m['pac'] = ($m['pac'] ?? 0) + (int)$p['pacotes'];
+            if ($p['lat'] !== null) $m['fim'] = [(float)$p['lat'], (float)$p['lng']]; // última pendente = onde a rota dele termina
+        }
+        unset($m);
+    }
+    $motos = db()->query("SELECT id, nome, telefone, lat, lng, ultima_localizacao, pacotes_max FROM usuarios WHERE tipo = 'motoboy' AND ativo = 1")->fetchAll();
+    $km = fn($a, $b) => $a && $b ? distancia_m($a, $b) / 1000 : null;
+    $out = [];
+    foreach ($motos as $m) {
+        $id = (int)$m['id'];
+        if ($id === (int)$r['motoboy_id']) continue;
+        $d = $dia[$id] ?? [];
+        $pend = $d['pend'] ?? 0;
+        $pos = $m['lat'] ? [(float)$m['lat'], (float)$m['lng']] : null;
+        $minSinal = $m['ultima_localizacao'] ? (int)round((time() - strtotime($m['ultima_localizacao'])) / 60) : null;
+        $posRecente = $pos && $minSinal !== null && $minSinal <= 30;
+        if ($pend > 0) {
+            // trabalhando: termina a rota dele e emenda (fim da rota até o parado), + tempo das entregas que faltam
+            $cont = $km($d['fim'] ?? $pos, $ponto);
+            $situacao = "faltam $pend entregas";
+            $custo = ($cont ?? 8) + 0.4 * $pend;
+            $explica = $cont !== null ? 'termina a rota a ' . number_format($cont, 1, ',', '') . ' km dele' : 'fim da rota sem localização';
+        } else {
+            // livre ou já terminou: vai direto
+            $ate = $posRecente ? $km($pos, $ponto) : null;
+            $situacao = isset($d['total']) ? 'já terminou a rota' : 'livre hoje (sem rota)';
+            $custo = $ate ?? 6;
+            $explica = $ate !== null ? 'está a ' . number_format($ate, 1, ',', '') . ' km dele agora' : 'localização desconhecida';
+        }
+        $depois = ($d['pac'] ?? 0) + $pacResgate;
+        $passa = $m['pacotes_max'] !== null && $depois > (int)$m['pacotes_max'];
+        if ($passa) $custo += 3;
+        $out[] = ['id' => $id, 'nome' => $m['nome'], 'situacao' => $situacao, 'explica' => $explica, 'pendentes' => $pend,
+                  'pacotes_depois' => $depois, 'max' => $m['pacotes_max'] !== null ? (int)$m['pacotes_max'] : null, 'passa_max' => $passa,
+                  'sinal_min' => $minSinal, 'custo' => $custo, 'livre' => $pend === 0];
+    }
+    usort($out, fn($a, $b) => $a['custo'] <=> $b['custo']);
+    return $out;
+}

@@ -200,3 +200,14 @@ tr.achada td { background: #EEFBD9; }
 .socorro .btn { border-color: #fff; }
 .socorro .btn.sucesso { background: #fff; color: var(--vermelho); border-color: #fff; }
 .aviso-socorro { background: #FBE4E1; color: var(--vermelho); padding: .8rem 1rem; font-weight: 500; border-bottom: 1px solid #E3B8B3; }
+
+/* sugestões de socorrista */
+.rotulo-sug { font-weight: 600; margin: .3rem 0 0; }
+.sugestoes { display: flex; flex-direction: column; gap: .4rem; }
+.sug { display: grid; grid-template-columns: auto 1fr; column-gap: .6rem; align-items: start; padding: .6rem .7rem; border: 1px solid var(--linha); border-radius: 10px; cursor: pointer; background: #fff; }
+.sug input { width: auto; grid-row: span 2; margin-top: .25rem; accent-color: #000; }
+.sug.melhor { border-color: #000; box-shadow: inset 4px 0 0 var(--marca); }
+.sug:has(input:checked) { background: #F4FBE8; }
+.sug-nome small { color: var(--suave); font-weight: 500; margin-left: .3rem; }
+.sug-nome small.livre { color: var(--verde); font-weight: 600; }
+.sug-info { font-size: .88rem; color: var(--suave); }

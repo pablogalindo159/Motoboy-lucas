@@ -84,7 +84,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
 
     if ($acao === 'ambulancia') {
         try {
-            $r = acionar_ambulancia($id, (int)($_POST['para'] ?? 0));
+            $para = (int)($_POST['para_outro'] ?? 0) ?: (int)($_POST['para'] ?? 0);
+            if (!$para) throw new RuntimeException('Escolha quem vai socorrer.');
+            $r = acionar_ambulancia($id, $para);
             flash("🚑 Ambulância chamada: {$r['entregas']} entregas ({$r['pacotes']} pacotes) passaram para o socorrista. Ele já vê no celular onde buscar.");
         } catch (Throwable $ex) { flash($ex->getMessage(), 'erro'); }
     }
@@ -111,6 +113,7 @@ $s = db()->prepare("SELECT x.*, de.nome de_nome, pa.nome para_nome FROM socorros
 $s->execute([$id, $id]);
 $socorros = $s->fetchAll();
 $pendentesRota = array_filter($paradas, fn($p) => $p['status'] === 'pendente');
+$sugestoes = $pendentesRota ? sugerir_socorristas($id) : [];
 
 $fotos = [];
 if ($paradas) {
@@ -153,7 +156,7 @@ topo('Rota ' . $rota['motoboy'], 'rotas', true);
   </form>
 </div>
 
-<link rel="stylesheet" href="assets/sacas.css?v=15">
+<link rel="stylesheet" href="assets/sacas.css?v=16">
 <?php foreach ($socorros as $x): ?>
   <div class="aviso ambul">
     <b>🚑 Ambulância</b> · <?= e($x['de_nome']) ?> → <b><?= e($x['para_nome']) ?></b>:
@@ -170,15 +173,28 @@ topo('Rota ' . $rota['motoboy'], 'rotas', true);
 <?php if ($pendentesRota): ?>
 <details class="cartao ambulancia" id="ambulancia">
   <summary>🚑 Chamar ambulância <small>moto quebrou? outro motoboy pega as entregas e continua</small></summary>
-  <form method="post" class="form" onsubmit="return confirm('Passar as ' + <?= count($pendentesRota) ?> + ' entregas pendentes para ' + this.para.selectedOptions[0].text + '?')">
+  <form method="post" class="form" onsubmit="const o = this.para_outro.selectedOptions[0], r = this.querySelector('[name=para]:checked'); const nome = o.value ? o.text : (r ? r.closest('label').querySelector('b').textContent : ''); if (!nome) { alert('Escolha quem vai socorrer.'); return false; } return confirm('Passar as <?= count($pendentesRota) ?> entregas pendentes para ' + nome + '?')">
     <?= csrf_field() ?><input type="hidden" name="acao" value="ambulancia">
     <p>As <b><?= count($pendentesRota) ?></b> entregas pendentes (<b><?= array_sum(array_column($pendentesRota, 'pacotes')) ?></b> pacotes) passam para o socorrista, na mesma ordem, depois das entregas dele.
        As já feitas continuam com <?= e($rota['motoboy']) ?> e contam no financeiro dele.</p>
-    <label>Quem vai socorrer
-      <select name="para" required>
-        <option value="">Escolha…</option>
+    <p class="rotulo-sug">Sugestões (quem atrapalha menos a própria rota e emenda mais perto):</p>
+    <div class="sugestoes">
+      <?php foreach (array_slice($sugestoes, 0, 5) as $i => $c): ?>
+        <label class="sug<?= $i === 0 ? ' melhor' : '' ?>">
+          <input type="radio" name="para" value="<?= $c['id'] ?>" <?= $i === 0 ? 'checked' : '' ?>>
+          <span class="sug-nome"><?= $i === 0 ? '⭐ ' : '' ?><b><?= e($c['nome']) ?></b> <small class="<?= $c['livre'] ? 'livre' : '' ?>"><?= e($c['situacao']) ?></small></span>
+          <span class="sug-info"><?= e($c['explica']) ?> · ficaria com <?= (int)$c['pacotes_depois'] ?> pacotes<?php if ($c['max'] !== null): ?> (máx. <?= $c['max'] ?>)<?php endif; ?>
+            <?php if ($c['passa_max']): ?><b class="txt-alerta"> passa do máximo</b><?php endif; ?>
+            <?php if ($c['sinal_min'] !== null && $c['sinal_min'] > 15 && !$c['livre']): ?><b class="txt-alerta"> · sem sinal há <?= $c['sinal_min'] ?> min</b><?php endif; ?></span>
+        </label>
+      <?php endforeach; ?>
+    </div>
+    <label>Ou escolha outro motoboy (inclusive quem não está trabalhando hoje)
+      <select name="para_outro">
+        <option value="">— usar a sugestão marcada acima —</option>
         <?php foreach ($motoboys as $m): if ((int)$m['id'] === (int)$rota['motoboy_id']) continue; ?><option value="<?= $m['id'] ?>"><?= e($m['nome']) ?></option><?php endforeach; ?>
       </select></label>
+    <p class="dica">Novo boy que ainda não está no sistema? <a href="motoboys.php" target="_blank">Cadastrar motoboy</a> e depois recarregue esta página.</p>
     <button class="btn perigo-cheio">Chamar ambulância</button>
     <p class="dica">O socorrista vê no celular onde buscar (última posição do GPS de <?= e($rota['motoboy']) ?>) e marca quando pegar os pacotes.</p>
   </form>
