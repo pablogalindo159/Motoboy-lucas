@@ -18,7 +18,8 @@ elseif ($escolhidos) [$grupos, $avisos] = grupos_por_setor($data, $escolhidos, $
 // motoboys escolhidos em cada quadrante/setor (um ou mais; vem do formulário ao recalcular ou confirmar)
 $sel = isset($_REQUEST['motoboy']) && is_array($_REQUEST['motoboy']) ? $_REQUEST['motoboy'] : null;
 foreach ($grupos as &$g) {
-    $lista = $g['motoboy_id'] ? [(int)$g['motoboy_id']] : [];
+    // quadrantes começam sempre em "Não distribuir": o motoboy é escolhido na hora (setores continuam automáticos)
+    $lista = ($modo !== 'quadrantes' && $g['motoboy_id']) ? [(int)$g['motoboy_id']] : [];
     if ($sel !== null && array_key_exists($g['chave'], $sel)) {
         $v = is_array($sel[$g['chave']]) ? $sel[$g['chave']] : [$sel[$g['chave']]];
         $lista = array_values(array_unique(array_filter(array_map('intval', $v))));
@@ -231,7 +232,7 @@ topo('Distribuir entregas', 'rotas', true);
       <label class="lembrar"><input type="checkbox" name="partir_caixa" value="1" <?= $partirCaixa ? 'checked' : '' ?> onchange="this.form.querySelector('[value=previa]').click()">
         Quadrante com mais de um motoboy: dividir igual, mesmo partindo caixa <small>(desmarcado = cada um fica com caixas inteiras)</small></label>
     <?php endif; ?>
-    <?php if ($modo === 'quadrantes'): ?><label class="lembrar"><input type="checkbox" name="lembrar" value="1" checked> Lembrar estes motoboys nos quadrantes para os próximos dias</label><?php endif; ?>
+
 
     <?php if ($pm):
         // de quem cada um recebeu
