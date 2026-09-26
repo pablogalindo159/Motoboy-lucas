@@ -249,3 +249,9 @@ tr.achada td { background: #EEFBD9; }
   .cx-num { color: #000; }
   .cx[hidden] { display: none; }
 }
+
+/* passar entregas sem motoboy */
+.passar-sem { display: flex; flex-wrap: wrap; gap: .5rem .8rem; align-items: center; margin: .4rem 0 .8rem; padding: .8rem 1rem; border-left: 5px solid var(--vermelho); }
+.passar-sem select { width: auto; }
+.passar-sem .link { background: none; border: 0; padding: 0; color: var(--azul); text-decoration: underline; font: inherit; cursor: pointer; }
+.chk-sem { width: auto; accent-color: #000; vertical-align: middle; }

@@ -14,6 +14,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
         flash('Rota criada. Agora lance as paradas.');
         redirecionar('rota.php?id=' . db()->lastInsertId());
     }
+    if ($acao === 'passar_sem_moto') {
+        $mid = (int)($_POST['motoboy_id'] ?? 0);
+        $ids = (array)($_POST['entregas'] ?? []);
+        if (!$mid || !$ids) flash('Marque as entregas e escolha o motoboy.', 'erro');
+        else {
+            $n = adicionar_entregas_ao_motoboy($_POST['data'] ?? date('Y-m-d'), $ids, $mid);
+            flash($n ? "$n entregas passaram para o motoboy, no fim da rota dele. As outras rotas não mudaram." : 'Nenhuma entrega passada (elas já estavam com algum motoboy).', $n ? 'ok' : 'alerta');
+        }
+        redirecionar('rotas.php?data=' . urlencode($_POST['data'] ?? '') . '#lista-entregas');
+    }
     if ($acao === 'excluir') {
         db()->prepare("DELETE FROM rotas WHERE id = ?")->execute([(int)$_POST['id']]);
         flash('Rota excluída.');
@@ -35,7 +45,7 @@ $rotas = $s->fetchAll();
 
 // todas as entregas da lista do dia, com o motoboy que ficou com cada uma (ou sem motoboy) e a zona
 $s = db()->prepare("
-  SELECT e.entrega, e.rua, e.numero_casa, e.pacotes, e.lat, e.lng, e.bairro, e.geo_status, x.status, x.nome motoboy, x.cor
+  SELECT e.id, e.entrega, e.rua, e.numero_casa, e.pacotes, e.lat, e.lng, e.bairro, e.geo_status, x.status, x.nome motoboy, x.cor
   FROM entregas e
   LEFT JOIN (SELECT p.entrega, p.status, u.nome, r.cor FROM paradas p JOIN rotas r ON r.id = p.rota_id JOIN usuarios u ON u.id = r.motoboy_id
              WHERE r.data = ? AND p.entrega IS NOT NULL) x ON x.entrega = e.entrega
@@ -58,7 +68,7 @@ $rotuloStatus = ['aberta' => 'Aguardando', 'em_andamento' => 'Em andamento', 'fi
 
 topo('Rotas', 'rotas');
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=19">
+<link rel="stylesheet" href="assets/sacas.css?v=20">
 <div class="cabecalho-rota"><h1>Rotas</h1>
   <div class="acoes">
     <a class="btn" href="cd.php">Posição do CD</a>
@@ -128,13 +138,26 @@ topo('Rotas', 'rotas');
     <button type="button" data-f="fora">Fora dos bairros / quadrantes <b><?= $contagem['fora'] ?></b></button>
   </div>
   <p class="dica" id="achados"></p>
+  <?php if ($contagem['sem']): ?>
+  <form method="post" class="passar-sem cartao" id="f-passar">
+    <?= csrf_field() ?><input type="hidden" name="acao" value="passar_sem_moto"><input type="hidden" name="data" value="<?= e($data) ?>">
+    <b><?= $contagem['sem'] ?> entregas sem motoboy.</b>
+    <span>Marque na lista (ou <button type="button" class="link" onclick="document.querySelectorAll('.chk-sem').forEach(c => c.checked = true); contarSel()">marque todas</button>) e passe para:</span>
+    <select name="motoboy_id" required>
+      <option value="">Escolha o motoboy…</option>
+      <?php foreach ($motoboys as $m): ?><option value="<?= $m['id'] ?>"><?= e($m['nome']) ?></option><?php endforeach; ?>
+    </select>
+    <button class="btn primario" id="btn-passar" disabled>Passar selecionadas</button>
+    <small class="dica">Entram no fim da rota dele, sem mexer nas outras rotas.</small>
+  </form>
+  <?php endif; ?>
   <div class="tabela-wrap tabela-longa">
     <table class="tabela">
       <thead><tr><th>Nº</th><th>Endereço</th><th>Pacotes</th><th>Zona</th><th>Motoboy</th><th>Situação</th></tr></thead>
       <tbody id="corpo-lista">
       <?php foreach ($lista as $it): ?>
         <tr data-num="<?= (int)$it['entrega'] ?>" data-busca="<?= e(sem_acento($it['rua'] . ' ' . $it['numero_casa'])) ?>" data-sem="<?= $it['motoboy'] ? 0 : 1 ?>" data-fora="<?= $it['fora'] ? 1 : 0 ?>">
-          <td><span class="num-parada"><?= (int)$it['entrega'] ?></span></td>
+          <td><?php if (!$it['motoboy']): ?><input type="checkbox" class="chk-sem" form="f-passar" name="entregas[]" value="<?= (int)$it['id'] ?>" onchange="contarSel()" aria-label="Selecionar entrega <?= (int)$it['entrega'] ?>"> <?php endif; ?><span class="num-parada"><?= (int)$it['entrega'] ?></span></td>
           <td><?= e($it['rua']) ?>, <?= e($it['numero_casa']) ?></td>
           <td><?= (int)$it['pacotes'] ?></td>
           <td><?php if ($it['sem_local']): ?><small class="txt-alerta">não achado no mapa</small>
@@ -167,6 +190,7 @@ topo('Rotas', 'rotas');
     // número exato: destaca e leva até ela
     linhas.forEach(tr => tr.classList.toggle('achada', soNumero && tr.dataset.num === q));
   }
+  window.contarSel = () => { const n = document.querySelectorAll('.chk-sem:checked').length, b = document.getElementById('btn-passar'); if (b) { b.disabled = !n; b.textContent = n ? `Passar ${n} selecionada${n > 1 ? 's' : ''}` : 'Passar selecionadas'; } };
   busca.addEventListener('input', aplicar);
   document.querySelectorAll('.filtros button').forEach(b => b.addEventListener('click', () => {
     document.querySelectorAll('.filtros button').forEach(x => x.classList.remove('ativo'));

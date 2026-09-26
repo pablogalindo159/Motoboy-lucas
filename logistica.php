@@ -981,3 +981,41 @@ function garantir_schema_v10(): void {
     @touch($flag);
 }
 garantir_schema_v10();
+
+/**
+ * Passa entregas da lista do dia que estão sem motoboy para um motoboy, sem mexer nas outras rotas.
+ * Entram no fim da rota dele (na ordem do número); sem rota no dia, cria uma. Retorna quantas entraram.
+ */
+function adicionar_entregas_ao_motoboy(string $data, array $idsEntregas, int $mid): int {
+    $ids = array_values(array_filter(array_map('intval', $idsEntregas)));
+    if (!$ids || !$mid) return 0;
+    $pdo = db();
+    $in = implode(',', $ids);
+    // só as que ainda não estão em nenhuma rota do dia
+    $s = $pdo->prepare("SELECT e.* FROM entregas e WHERE e.data = ? AND e.id IN ($in)
+                        AND NOT EXISTS (SELECT 1 FROM paradas p JOIN rotas r ON r.id = p.rota_id WHERE r.data = e.data AND p.entrega = e.entrega)
+                        ORDER BY e.entrega");
+    $s->execute([$data]);
+    $ents = $s->fetchAll();
+    if (!$ents) return 0;
+    $pdo->beginTransaction();
+    try {
+        $s = $pdo->prepare("SELECT id FROM rotas WHERE motoboy_id = ? AND data = ? ORDER BY id LIMIT 1");
+        $s->execute([$mid, $data]);
+        $rid = (int)$s->fetchColumn();
+        if (!$rid) {
+            $pdo->prepare("INSERT INTO rotas (motoboy_id, data, descricao, cor, valor_entrega) VALUES (?,?,?,?,(SELECT valor_entrega FROM usuarios WHERE id = ?))")
+                ->execute([$mid, $data, 'Entregas avulsas', PALETA[$mid % count(PALETA)], $mid]);
+            $rid = (int)$pdo->lastInsertId();
+        }
+        $s = $pdo->prepare("SELECT COALESCE(MAX(numero), 0) FROM paradas WHERE rota_id = ?");
+        $s->execute([$rid]);
+        $n = (int)$s->fetchColumn();
+        $ins = $pdo->prepare("INSERT INTO paradas (rota_id, numero, entrega, endereco, numero_casa, bairro, cidade, pacotes, lat, lng, geo_tentado) VALUES (?,?,?,?,?,?,'',?,?,?,1)");
+        foreach ($ents as $e) $ins->execute([$rid, ++$n, $e['entrega'], $e['rua'], $e['numero_casa'], ($e['geo_status'] ?? '') === 'ok' ? $e['bairro'] : null, $e['pacotes'], $e['lat'], $e['lng']]);
+        $pdo->commit();
+    } catch (Throwable $ex) { $pdo->rollBack(); throw $ex; }
+    recalcular_sacas_rota($rid);
+    atualizar_status_rota($rid);
+    return count($ents);
+}
