@@ -364,7 +364,7 @@ function grupos_por_quadrante(string $data): array {
     }
     completar_sem_local($entregas, $grupoDe);
     $grupos = [];
-    foreach ($quads as $q) $grupos['q' . $q['id']] = ['chave' => 'q' . $q['id'], 'nome' => $q['nome'], 'cor' => $q['cor'], 'motoboy_id' => $q['motoboy_id'], 'entregas' => []];
+    foreach ($quads as $q) $grupos['q' . $q['id']] = ['chave' => 'q' . $q['id'], 'nome' => $q['nome'], 'cor' => $q['cor'], 'motoboy_id' => $q['motoboy_id'], 'pontos' => $q['pontos'], 'entregas' => []];
     foreach ($entregas as $e) if (isset($grupoDe[$e['id']])) $grupos[$grupoDe[$e['id']]]['entregas'][] = $e;
     return [array_values(array_filter($grupos, fn($g) => $g['entregas'])), ['fora' => $fora]];
 }
@@ -399,14 +399,114 @@ function grupos_por_setor(string $data, array $motoboyIds): array {
 
 /** Cria as rotas do dia a partir dos grupos (substitui as rotas desse dia). */
 function criar_rotas_do_dia(string $data, array $grupos): array {
-    $porMoto = [];
+    return criar_rotas_por_motoboy($data, montar_por_motoboy($grupos));
+}
+
+/** Junta os grupos (quadrantes/setores) por motoboy. A cor e o "quadrante principal" são os do grupo com mais pacotes. */
+function montar_por_motoboy(array $grupos): array {
+    $pm = [];
     foreach ($grupos as $g) {
         if (empty($g['motoboy_id'])) continue;
-        $m = &$porMoto[(int)$g['motoboy_id']];
-        $m['nomes'][] = $g['nome']; $m['cor'] ??= $g['cor'];
+        $mid = (int)$g['motoboy_id'];
+        $pac = array_sum(array_column($g['entregas'], 'pacotes'));
+        $m = &$pm[$mid];
+        $m['nomes'][] = $g['nome'];
         $m['entregas'] = array_merge($m['entregas'] ?? [], $g['entregas']);
+        $m['pac_quadrante'] = ($m['pac_quadrante'] ?? 0) + $pac;
+        if (!isset($m['maior']) || $pac > $m['maior']) { $m['maior'] = $pac; $m['cor'] = $g['cor']; $m['principal'] = $g['pontos'] ?? null; $m['nome_principal'] = $g['nome']; }
         unset($m);
     }
+    return $pm;
+}
+
+/**
+ * Equilibra os pacotes entre os motoboys respeitando mínimo e máximo do dia.
+ * 1) Quem passou do máximo cede as entregas mais perto da área de outro motoboy que tenha espaço.
+ * 2) Quem ficou abaixo do mínimo recebe as entregas mais perto do seu quadrante principal,
+ *    tiradas de quem continua acima do próprio mínimo.
+ * $lim[motoboy_id] = ['min' => int|null, 'max' => int|null]. Retorna o resumo das trocas.
+ */
+function equilibrar_pacotes(array &$pm, array $lim): array {
+    $ids = array_keys($pm);
+    $res = ['movidas' => [], 'recebeu' => [], 'cedeu' => []];
+    if (count($ids) < 2) return $res;
+    $mn = fn($m) => (int)($lim[$m]['min'] ?? 0);
+    $mx = fn($m) => isset($lim[$m]['max']) && $lim[$m]['max'] !== null ? (int)$lim[$m]['max'] : PHP_INT_MAX;
+
+    // referência de cada motoboy: o quadrante principal; sem quadrante (setores), o centro das entregas dele
+    $ref = [];
+    foreach ($pm as $mid => $m) {
+        if (!empty($m['principal'])) { $ref[$mid] = ['poli' => $m['principal']]; continue; }
+        $c = array_filter($m['entregas'], fn($e) => $e['lat'] !== null);
+        $ref[$mid] = $c ? ['centro' => [array_sum(array_column($c, 'lat')) / count($c), array_sum(array_column($c, 'lng')) / count($c)]] : null;
+    }
+    $cache = [];
+    $dist = function (array $e, int $mid) use (&$cache, $ref) {
+        $k = $e['id'] . ':' . $mid;
+        if (isset($cache[$k])) return $cache[$k];
+        $p = [(float)$e['lat'], (float)$e['lng']]; $r = $ref[$mid] ?? null;
+        if (!$r) $d = INF;
+        elseif (isset($r['poli'])) $d = dentro_poligono($p, $r['poli']) ? 0.0 : distancia_borda($p, $r['poli']);
+        else $d = distancia_m($p, $r['centro']);
+        return $cache[$k] = $d;
+    };
+    $pac = [];
+    foreach ($pm as $mid => $m) $pac[$mid] = array_sum(array_column($m['entregas'], 'pacotes'));
+    $mover = function ($de, $k, $para) use (&$pm, &$pac, &$res) {
+        $e = $pm[$de]['entregas'][$k];
+        unset($pm[$de]['entregas'][$k]);
+        $e['movida_de'] = $de;
+        $pm[$para]['entregas'][] = $e;
+        $pac[$de] -= $e['pacotes']; $pac[$para] += $e['pacotes'];
+        $res['movidas'][] = ['entrega' => (int)$e['entrega'], 'de' => $de, 'para' => $para, 'pacotes' => (int)$e['pacotes']];
+        $res['cedeu'][$de] = ($res['cedeu'][$de] ?? 0) + $e['pacotes'];
+        $res['recebeu'][$para] = ($res['recebeu'][$para] ?? 0) + $e['pacotes'];
+    };
+    $limite = 3000;
+
+    // 1) acima do máximo
+    while ($limite-- > 0) {
+        $melhor = null;
+        foreach ($ids as $de) {
+            if ($pac[$de] <= $mx($de)) continue;
+            foreach ($pm[$de]['entregas'] as $k => $e) {
+                if ($e['lat'] === null) continue;
+                foreach ($ids as $para) {
+                    if ($para === $de || $pac[$para] + $e['pacotes'] > $mx($para)) continue;
+                    $c = $dist($e, $para) - $dist($e, $de) * 0.5; // prefere o que já está perto do outro e longe do próprio centro
+                    if ($pac[$para] < $mn($para)) $c -= 1500;       // e quem ainda está abaixo do mínimo
+                    if (!$melhor || $c < $melhor[0]) $melhor = [$c, $de, $k, $para];
+                }
+            }
+        }
+        if (!$melhor) break;
+        $mover($melhor[1], $melhor[2], $melhor[3]);
+    }
+    // 2) abaixo do mínimo
+    while ($limite-- > 0) {
+        $melhor = null;
+        foreach ($ids as $para) {
+            if ($pac[$para] >= $mn($para)) continue;
+            foreach ($ids as $de) {
+                if ($de === $para) continue;
+                foreach ($pm[$de]['entregas'] as $k => $e) {
+                    if ($e['lat'] === null || $pac[$de] - $e['pacotes'] < $mn($de) || $pac[$para] + $e['pacotes'] > $mx($para)) continue;
+                    $c = $dist($e, $para);
+                    if (!$melhor || $c < $melhor[0]) $melhor = [$c, $de, $k, $para];
+                }
+            }
+        }
+        if (!$melhor) break;
+        $mover($melhor[1], $melhor[2], $melhor[3]);
+    }
+    foreach ($pm as &$m) $m['entregas'] = array_values($m['entregas']);
+    unset($m);
+    $res['pacotes'] = $pac;
+    return $res;
+}
+
+/** Cria as rotas do dia a partir do resultado por motoboy (substitui as rotas desse dia). */
+function criar_rotas_por_motoboy(string $data, array $porMoto): array {
     $pdo = db();
     $pdo->beginTransaction();
     try {
@@ -492,3 +592,13 @@ function endereco_do_ponto(float $lat, float $lng): ?string {
     if ($cidade) $txt .= ', ' . $cidade;
     return $txt;
 }
+
+// Mínimo e máximo de pacotes padrão de cada motoboy (ajustável todo dia na distribuição)
+function garantir_schema_v7(): void {
+    $flag = __DIR__ . '/.schema_v7';
+    if (file_exists($flag)) return;
+    if (!db()->query("SHOW COLUMNS FROM usuarios LIKE 'pacotes_min'")->fetch())
+        db()->exec("ALTER TABLE usuarios ADD COLUMN pacotes_min INT NULL, ADD COLUMN pacotes_max INT NULL");
+    @touch($flag);
+}
+garantir_schema_v7();

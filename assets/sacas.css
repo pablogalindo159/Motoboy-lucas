@@ -108,3 +108,11 @@
 .voador-botoes .btn.primario { background: var(--marca); color: #000; border-color: var(--marca); }
 .dlg-voador [hidden] { display: none !important; }
 .voador-info { white-space: pre-line; }
+
+/* mínimo e máximo do dia */
+.limites { margin-top: 1rem; }
+.limites .tabela td { vertical-align: middle; }
+.num-lim { width: 5.2rem; padding: .45rem .5rem; }
+.limites .mais { color: var(--verde); font-weight: 600; }
+.limites .menos { color: var(--suave); }
+.rodape-previa { flex-wrap: wrap; }
