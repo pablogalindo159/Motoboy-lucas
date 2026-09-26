@@ -255,7 +255,9 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void pararRastreio() {
-            if (NetPointService.ligado) runOnUiThread(() -> NetPointService.comando(MainActivity.this, "rastreio_off", null, null, 0));
+            // só manda desligar o GPS se o serviço estiver rodando e rastreando (senão não há o que desligar)
+            if (NetPointService.ligado && NetPointService.rastreando)
+                runOnUiThread(() -> NetPointService.comando(MainActivity.this, "rastreio_off", null, null, 0));
         }
 
         /** Liga as notificações de avisos (funcionam com o app fechado). */

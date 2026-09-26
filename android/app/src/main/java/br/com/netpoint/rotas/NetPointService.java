@@ -60,6 +60,14 @@ public class NetPointService extends Service implements LocationListener {
     private long ultimoEnvio;
 
     static void comando(Context c, String acao, String api, String csrf, long ultimoAviso) {
+        // Parar: só para o serviço. (Acordar o serviço com startForegroundService só para desligá-lo
+        // faz o Android fechar o app, porque ele exige a notificação fixa em até 5 s.)
+        if ("parar".equals(acao)) {
+            c.getSharedPreferences("netpoint", MODE_PRIVATE).edit().remove("api").apply();
+            rastreando = false;
+            try { c.stopService(new Intent(c, NetPointService.class)); } catch (Exception ignored) { }
+            return;
+        }
         Intent i = new Intent(c, NetPointService.class).putExtra("acao", acao);
         if (api != null) i.putExtra("api", api);
         if (csrf != null) i.putExtra("csrf", csrf);
@@ -89,7 +97,12 @@ public class NetPointService extends Service implements LocationListener {
             if (u > ultimoAviso) ultimoAviso = u;
             prefs.edit().putString("api", api).putString("csrf", csrf).putLong("ultimo", ultimoAviso).apply();
         }
-        if ("parar".equals(acao) || api == null) { pararTudo(); return START_NOT_STICKY; }
+        if ("parar".equals(acao) || api == null) {
+            // mesmo parando, cumpre a regra do Android (mostrar a notificação) antes de sair: evita o app fechar
+            entrarEmPrimeiroPlano();
+            pararTudo();
+            return START_NOT_STICKY;
+        }
 
         if ("rastreio_on".equals(acao)) ligarGps();
         else if ("rastreio_off".equals(acao)) desligarGps();

@@ -300,3 +300,4 @@ tr.achada td { background: #EEFBD9; }
 .notif-corpo small b { display: inline; }
 .notif.nova.alta { border-left-color: var(--vermelho); }
 .filtros select { width: auto; border-radius: 99px; padding: .45rem .9rem; font-weight: 600; }
+.gps.desligado { color: #FFD666; }

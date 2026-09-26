@@ -90,7 +90,7 @@ topo('Minhas entregas');
 $sacasColetadas = count(array_filter($sacas, fn($x) => $x['coletada']));
 $corRota = $rota['cor'] ?? null;
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=23">
+<link rel="stylesheet" href="assets/sacas.css?v=26">
 <div class="app-moto">
   <header class="moto-topo">
     <img src="assets/icone.svg" alt="" width="40" height="40" class="icone-topo">
@@ -657,33 +657,37 @@ function enviar(pos) {
     .then(r => { gpsEl.textContent = r.ok ? 'Localização enviada ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Falha ao enviar'; gpsEl.className = 'gps ' + (r.ok ? 'on' : 'off'); })
     .catch(() => { gpsEl.textContent = 'Sem internet'; gpsEl.className = 'gps off'; });
 }
-// Dentro do app Android: o próprio app envia a localização, mesmo com o Waze/Maps na frente.
+// GPS só durante o trabalho: liga ao tocar em "Cheguei no CD" e desliga quando a rota termina.
+// (rota sem etapa de CD: enquanto tiver entrega pendente; ambulância em andamento: também liga)
 const APP = window.NetPointApp;
-// em rota: tem entrega pendente, ou está esperando a ambulância (o socorrista precisa achar ele)
-const EM_ROTA = <?= (($rota && $pendentes) || array_filter($socorrosPassados, fn($x) => $x['status'] === 'aguardando') || $socorrosBuscar) ? 'true' : 'false' ?>;
-if (APP) {
-  if (EM_ROTA) {
+const GPS_LIGADO = <?= (($rota && $pendentes && ($rota['chegada_cd'] || !$sacas)) || array_filter($socorrosPassados, fn($x) => $x['status'] === 'aguardando') || $socorrosBuscar) ? 'true' : 'false' ?>;
+const EM_ROTA = GPS_LIGADO;
+const MOTIVO_GPS_OFF = <?= json_encode(!$rota ? 'sem rota hoje' : (!$pendentes ? 'rota concluída' : 'liga quando você tocar em "Cheguei no CD"')) ?>;
+const TEM_FCM = !!(APP && APP.temFcm && APP.temFcm());
+if (GPS_LIGADO) {
+  if (APP) {
+    // o app envia a localização mesmo fechado ou em segundo plano (notificação fixa "Em rota")
     APP.iniciarRastreio(CSRF, new URL('api.php', location.href).href);
-    gpsEl.textContent = 'Localização ligada pelo app'; gpsEl.className = 'gps on';
+    gpsEl.textContent = '📍 Localização ligada (continua mesmo com o app fechado)'; gpsEl.className = 'gps on';
+  } else if (!('geolocation' in navigator)) {
+    gpsEl.textContent = 'Este celular não libera GPS'; gpsEl.className = 'gps off';
   } else {
-    APP.pararRastreio();
-    gpsEl.textContent = 'Localização desligada (sem entregas pendentes)'; gpsEl.className = 'gps';
+    navigator.geolocation.watchPosition(enviar, err => {
+      gpsEl.textContent = err.code === 1 ? 'GPS bloqueado: libere a localização para este site' : 'Procurando sinal de GPS…';
+      gpsEl.className = 'gps off';
+    }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 });
   }
-} else if (!('geolocation' in navigator)) {
-  gpsEl.textContent = 'Este celular não libera GPS'; gpsEl.className = 'gps off';
 } else {
-  navigator.geolocation.watchPosition(enviar, err => {
-    gpsEl.textContent = err.code === 1 ? 'GPS bloqueado: libere a localização para este site' : 'Procurando sinal de GPS…';
-    gpsEl.className = 'gps off';
-  }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 });
+  gpsEl.textContent = '📍 Localização desligada · ' + MOTIVO_GPS_OFF; gpsEl.className = 'gps desligado';
+  // sem Firebase o serviço segue só com os avisos (GPS desligado); com Firebase ele é parado lá embaixo
+  if (APP && !TEM_FCM && APP.pararRastreio) APP.pararRastreio();
 }
 
 // no app Android: Firebase (instantâneo) quando disponível; senão o serviço que confere a cada ~45 s
 window.registrarTokenFcm = token => post({ acao: 'registrar_token', token }).catch(() => {});
-if (window.NetPointApp) {
-  const temFcm = NetPointApp.temFcm && NetPointApp.temFcm();
-  if (temFcm) { registrarTokenFcm(NetPointApp.tokenFcm()); if (NetPointApp.desligarAvisos && !EM_ROTA) NetPointApp.desligarAvisos(); }
-  else if (NetPointApp.ligarAvisos) NetPointApp.ligarAvisos(new URL('api.php', location.href).href, ultimoAviso);
+if (APP) {
+  if (TEM_FCM) { registrarTokenFcm(APP.tokenFcm()); if (!GPS_LIGADO && APP.desligarAvisos) APP.desligarAvisos(); }
+  else if (APP.ligarAvisos) APP.ligarAvisos(new URL('api.php', location.href).href, ultimoAviso);
 }
 
 // Mantém a tela acesa enquanto a página está aberta (para o GPS continuar enviando)
