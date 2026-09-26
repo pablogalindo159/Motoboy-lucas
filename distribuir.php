@@ -10,8 +10,10 @@ $modo = ($_REQUEST['modo'] ?? '') ?: ($temQuadrantes ? 'quadrantes' : 'setores')
 $escolhidos = array_values(array_map('intval', (array)($_REQUEST['moto'] ?? array_column($motoboys, 'id'))));
 
 $grupos = []; $avisos = [];
-if ($modo === 'quadrantes') [$grupos, $avisos] = grupos_por_quadrante($data);
-elseif ($escolhidos) [$grupos, $avisos] = grupos_por_setor($data, $escolhidos);
+// entregas de fora que você aceitou mandar para o quadrante mais próximo
+$aceitas = array_values(array_filter(array_map('intval', (array)($_REQUEST['aceitar'] ?? []))));
+if ($modo === 'quadrantes') [$grupos, $avisos] = grupos_por_quadrante($data, $aceitas);
+elseif ($escolhidos) [$grupos, $avisos] = grupos_por_setor($data, $escolhidos, $aceitas);
 
 // motoboys escolhidos em cada quadrante/setor (um ou mais; vem do formulário ao recalcular ou confirmar)
 $sel = isset($_REQUEST['motoboy']) && is_array($_REQUEST['motoboy']) ? $_REQUEST['motoboy'] : null;
@@ -103,7 +105,7 @@ $iniciadas = (int)$s->fetchColumn();
 
 topo('Distribuir entregas', 'rotas', true);
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=16">
+<link rel="stylesheet" href="assets/sacas.css?v=18">
 <a href="rotas.php?data=<?= e($data) ?>" class="voltar">← Rotas</a>
 <h1>Distribuir entregas de <?= data_br($data) ?></h1>
 
@@ -133,26 +135,38 @@ topo('Distribuir entregas', 'rotas', true);
   </form>
 <?php endif; ?>
 
-<?php if (!empty($avisos['fora'])):
-    $foraPac = array_sum(array_column($avisos['fora_lista'], 'pacotes'));
-    $foraGrupo = null; foreach ($grupos as $g) if ($g['chave'] === 'fora') $foraGrupo = $g; ?>
-  <div class="aviso erro fora-quad">
-    <b>⚠ <?= (int)$avisos['fora'] ?> entregas fora dos quadrantes (<?= $foraPac ?> pacotes)</b>
-    <?php if ($foraGrupo && $foraGrupo['motoboys']): ?>
-      — vão para <?= e(implode(', ', array_map(fn($m) => $nomeMoto[$m] ?? '?', $foraGrupo['motoboys']))) ?>, como você escolheu no card "FORA DOS QUADRANTES".
-    <?php else: ?>
-      — <b>não serão distribuídas</b>. Para entregar mesmo assim, escolha um motoboy no card "FORA DOS QUADRANTES".
+<?php if (!empty($avisos['fora']) || !empty($avisos['aceitas'])):
+    $foraLista = $avisos['fora_lista'] ?? []; $aceitasLista = $avisos['aceitas'] ?? [];
+    $foraPac = array_sum(array_column($foraLista, 'pacotes'));
+    $foraGrupo = null; foreach ($grupos as $g) if ($g['chave'] === 'fora') $foraGrupo = $g;
+    $dist = fn($m) => $m === null ? '' : ($m >= 1000 ? number_format($m / 1000, 1, ',', '') . ' km' : $m . ' m'); ?>
+  <div class="aviso <?= $foraLista ? 'erro' : 'ok' ?> fora-quad">
+    <?php if ($foraLista): ?>
+      <b>⚠ <?= count($foraLista) ?> entregas fora dos bairros / quadrantes atendidos (<?= $foraPac ?> pacotes)</b>
+      <?php if ($foraGrupo && $foraGrupo['motoboys']): ?>
+        — vão para <?= e(implode(', ', array_map(fn($m) => $nomeMoto[$m] ?? '?', $foraGrupo['motoboys']))) ?>, como você escolheu no card de fora.
+      <?php else: ?>
+        — <b>não serão distribuídas</b>, a não ser que você aceite mandar para o quadrante mais próximo.
+      <?php endif; ?>
     <?php endif; ?>
-    <details><summary>Ver quais são</summary>
+    <?php if ($aceitasLista): ?><p><b>✓ <?= count($aceitasLista) ?> aceitas</b> foram para o quadrante mais próximo (<?= array_sum(array_column($aceitasLista, 'pacotes')) ?> pacotes).</p><?php endif; ?>
+    <details <?= $aceitasLista || count($foraLista) <= 10 ? 'open' : '' ?>><summary>Ver quais são</summary>
       <div class="tabela-wrap"><table class="tabela">
-        <thead><tr><th>Nº</th><th>Endereço</th><th>Pacotes</th><th>Zona mais perto</th></tr></thead>
-        <tbody><?php foreach ($avisos['fora_lista'] as $f): ?>
-          <tr><td><b><?= (int)$f['entrega'] ?></b></td><td><?= e($f['rua']) ?>, <?= e($f['numero_casa']) ?></td><td><?= (int)$f['pacotes'] ?></td>
-              <td><?= e($f['zona_perto'] ?? '—') ?> <small>(<?= $f['dist_m'] >= 1000 ? number_format($f['dist_m'] / 1000, 1, ',', '') . ' km' : $f['dist_m'] . ' m' ?>)</small>
-                  <a href="https://www.google.com/maps?q=<?= e($f['lat']) ?>,<?= e($f['lng']) ?>" target="_blank">mapa</a></td></tr>
+        <thead><tr><th>Nº</th><th>Endereço</th><th>Pacotes</th><th>Por quê</th><th>Mandar para o quadrante mais próximo</th></tr></thead>
+        <tbody><?php foreach (array_merge($aceitasLista, $foraLista) as $f): $ok = in_array((int)$f['id'], $aceitas, true) && $f['zona_id'] !== null; ?>
+          <tr class="<?= $ok ? 'aceita' : '' ?>"><td><b><?= (int)$f['entrega'] ?></b></td><td><?= e($f['rua']) ?>, <?= e($f['numero_casa']) ?></td><td><?= (int)$f['pacotes'] ?></td>
+            <td><small class="<?= $ok ? '' : 'txt-erro' ?>"><?= e($f['motivo'] ?: 'Fora dos quadrantes') ?></small>
+              <?php if ($f['lat'] !== null): ?> <a href="https://www.google.com/maps?q=<?= e($f['lat']) ?>,<?= e($f['lng']) ?>" target="_blank">mapa</a><?php endif; ?></td>
+            <td><?php if ($f['zona_id'] !== null): ?>
+                <label class="aceitar"><input type="checkbox" class="chk-aceitar" form="f-dist" name="aceitar[]" value="<?= (int)$f['id'] ?>" <?= $ok ? 'checked' : '' ?> onchange="document.querySelector('#f-dist [value=previa]').click()">
+                  <?= e($f['zona_perto']) ?> <small>(<?= $dist($f['dist_m']) ?>)</small></label>
+              <?php else: ?><small>sem localização</small><?php endif; ?></td></tr>
         <?php endforeach; ?></tbody>
       </table></div>
-      <p class="dica">O endereço pode ter sido achado no lugar errado. Confira no mapa; se estiver certo, é entrega fora da sua região.</p>
+      <?php if ($foraLista): ?>
+        <button type="button" class="btn pequeno" onclick="document.querySelectorAll('.chk-aceitar').forEach(c => c.checked = true); document.querySelector('#f-dist [value=previa]').click()">Aceitar todas: mandar para o quadrante mais próximo</button>
+      <?php endif; ?>
+      <p class="dica">O endereço pode ter sido achado no lugar errado. Confira no mapa antes de aceitar.</p>
     </details>
   </div>
 <?php endif; ?>

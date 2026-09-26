@@ -67,15 +67,48 @@ function ler_lista_entregas(string $texto): array {
     return ['itens' => $itens, 'ignoradas' => $ignoradas];
 }
 
-// ---------- localização (com cache: endereço repetido não consulta de novo) ----------
+// ---------- bairros atendidos: a busca de endereço só aceita estes ----------
+const BAIRROS_PADRAO = [
+    'Pinhais'  => ['Weissópolis', 'Vargem Grande', 'Guarituba', 'Maria Antonieta', 'Planta Guilherme Weiss'],
+    'Curitiba' => ['Cajuru', 'Capão da Imbuia', 'Tarumã', 'Cristo Rei', 'Jardim Botânico', 'Alto da Rua XV'],
+];
+function bairros_atendidos(): array {
+    $j = json_decode((string)cfg('bairros_atendidos', ''), true);
+    return is_array($j) && $j ? $j : BAIRROS_PADRAO;
+}
+function _norm_lugar(?string $t): string {
+    $t = sem_acento((string)$t);
+    $t = preg_replace('/[^a-z0-9 ]+/', ' ', $t);
+    return trim(preg_replace('/\s+/', ' ', $t));
+}
+function _mesmo_lugar(string $a, string $b): bool {
+    $a = _norm_lugar($a); $b = _norm_lugar($b);
+    if ($a === '' || $b === '') return false;
+    if ($a === $b) return true;
+    $ta = array_diff(explode(' ', $a), ['da', 'de', 'do', 'rua']); $tb = array_diff(explode(' ', $b), ['da', 'de', 'do', 'rua']);
+    if ($ta && $tb && (!array_diff($ta, $tb) || !array_diff($tb, $ta))) return true; // "alto da xv" = "alto da rua xv"
+    return levenshtein($a, $b) <= 2;                                                  // pequenas diferenças de escrita ("guarituba" = "guaratuba")
+}
+/** O lugar achado (cidade + nomes de bairro que o mapa devolveu) está nos bairros atendidos? Retorna o nome do bairro atendido. */
+function bairro_permitido(?string $cidade, array $nomesBairro): ?string {
+    foreach (bairros_atendidos() as $cid => $bairros) {
+        if ($cidade && _norm_lugar($cid) !== _norm_lugar($cidade)) continue; // cidade exata ("Pinhais" não é "São José dos Pinhais")
+        foreach ($bairros as $b) foreach ($nomesBairro as $n) if ($n && _mesmo_lugar($b, $n)) return $b;
+    }
+    return null;
+}
+
+// ---------- busca de endereço (com cache: endereço repetido não consulta de novo) ----------
 function geo_chave(string $rua, string $num): string { return mb_substr(sem_acento(trim("$rua, $num")), 0, 250); }
 
+/** Resultado guardado: null = nunca consultado; senão ['lat','lng','bairro','status'] (status: ok | fora_bairro | nao_achado). */
 function geo_cache(string $rua, string $num): ?array {
-    $s = db()->prepare("SELECT lat, lng FROM geocache WHERE chave = ?");
+    $s = db()->prepare("SELECT lat, lng, bairro, status FROM geocache WHERE chave = ?");
     $s->execute([geo_chave($rua, $num)]);
     $r = $s->fetch();
-    if (!$r) return null;                       // nunca consultado
-    return $r['lat'] ? [(float)$r['lat'], (float)$r['lng']] : [null, null]; // consultado, sem resultado
+    if (!$r) return null;
+    return ['lat' => $r['lat'] !== null ? (float)$r['lat'] : null, 'lng' => $r['lng'] !== null ? (float)$r['lng'] : null,
+            'bairro' => $r['bairro'], 'status' => $r['status'] ?: ($r['lat'] !== null ? 'ok' : 'nao_achado')];
 }
 
 function http_json(string $url, array $headers = []) {
@@ -84,40 +117,64 @@ function http_json(string $url, array $headers = []) {
     return $r ? json_decode($r, true) : null;
 }
 
-// Consulta de verdade (Google se tiver chave, senão OpenStreetMap). Retorna [lat, lng, fonte, consultou_nominatim]
-function geo_consultar(string $rua, string $num): array {
-    [$o, $n, $l, $s] = regiao_busca();
+/**
+ * Consulta de verdade (Google se tiver chave, senão OpenStreetMap).
+ * $restringir = true: só aceita resultado nos bairros atendidos. Retorna ['lat','lng','bairro','status','fonte','consultou'].
+ * Se a rua só existir em outro bairro: status = fora_bairro e bairro = onde foi achada.
+ */
+function geo_consultar(string $rua, string $num, bool $restringir = true): array {
+    [$o, $n, $l, $s] = $restringir ? regiao_busca() : REGIAO_BUSCA;
+    $vazio = ['lat' => null, 'lng' => null, 'bairro' => null, 'status' => 'nao_achado', 'fonte' => null, 'consultou' => false];
+    $foraEm = null;
     $chave = trim((string)cfg('google_key', ''));
     if ($chave !== '') {
-        $url = 'https://maps.googleapis.com/maps/api/geocode/json?' . http_build_query([
-            'address' => "$rua, $num, Paraná, Brasil", 'region' => 'br',
-            'components' => 'country:BR|administrative_area:PR', 'bounds' => "$s,$o|$n,$l", 'key' => $chave,
-        ]);
-        $j = http_json($url);
-        foreach ($j['results'] ?? [] as $res) {
-            $tipos = $res['types'] ?? [];
-            if (!array_intersect($tipos, ['street_address', 'premise', 'subpremise', 'route', 'establishment'])) continue;
-            $p = $res['geometry']['location'];
-            if ($p['lng'] >= $o && $p['lng'] <= $l && $p['lat'] <= $n && $p['lat'] >= $s) return [$p['lat'], $p['lng'], 'google', false];
+        $cidades = $restringir ? array_keys(bairros_atendidos()) : [''];
+        foreach ($cidades as $cid) {
+            $j = http_json('https://maps.googleapis.com/maps/api/geocode/json?' . http_build_query([
+                'address' => trim("$rua, $num" . ($cid ? ", $cid" : '') . ", Paraná, Brasil", ', '), 'region' => 'br', 'language' => 'pt-BR',
+                'components' => 'country:BR|administrative_area:PR', 'bounds' => "$s,$o|$n,$l", 'key' => $chave]));
+            foreach ($j['results'] ?? [] as $res) {
+                if (!array_intersect($res['types'] ?? [], ['street_address', 'premise', 'subpremise', 'route', 'establishment'])) continue;
+                $cidade = null; $nomes = [];
+                foreach ($res['address_components'] ?? [] as $c) {
+                    if (array_intersect($c['types'], ['administrative_area_level_2', 'locality'])) $cidade ??= $c['long_name'];
+                    if (array_intersect($c['types'], ['sublocality', 'sublocality_level_1', 'neighborhood'])) $nomes[] = $c['long_name'];
+                }
+                $p = $res['geometry']['location'];
+                if (!$restringir) return ['lat' => $p['lat'], 'lng' => $p['lng'], 'bairro' => $nomes[0] ?? null, 'status' => 'ok', 'fonte' => 'google', 'consultou' => false];
+                if ($b = bairro_permitido($cidade, $nomes)) return ['lat' => $p['lat'], 'lng' => $p['lng'], 'bairro' => $b, 'status' => 'ok', 'fonte' => 'google', 'consultou' => false];
+                $foraEm ??= ['bairro' => trim(($nomes[0] ?? 'outro bairro') . ($cidade ? " ($cidade)" : '')), 'lat' => $p['lat'], 'lng' => $p['lng']];
+            }
         }
-        return [null, null, 'google', false];
+        return $foraEm ? ['status' => 'fora_bairro', 'fonte' => 'google'] + $foraEm + $vazio : ['fonte' => 'google'] + $vazio;
     }
     $ua = ['User-Agent: RotasMotoboy/1.0 (' . EMAIL_CONTATO . ')'];
-    $base = ['format' => 'json', 'limit' => 1, 'countrycodes' => 'br', 'viewbox' => "$o,$n,$l,$s", 'bounded' => 1];
-    $j = http_json('https://nominatim.openstreetmap.org/search?' . http_build_query($base + ['street' => trim("$num $rua"), 'state' => 'Paraná']), $ua);
-    if (!empty($j[0]['lat'])) return [(float)$j[0]['lat'], (float)$j[0]['lon'], 'osm', true];
-    usleep(1100000);
-    $j = http_json('https://nominatim.openstreetmap.org/search?' . http_build_query($base + ['street' => $rua, 'state' => 'Paraná']), $ua);
-    if (!empty($j[0]['lat'])) return [(float)$j[0]['lat'], (float)$j[0]['lon'], 'osm-rua', true];
-    return [null, null, 'osm', true];
+    $base = ['format' => 'jsonv2', 'limit' => 10, 'addressdetails' => 1, 'countrycodes' => 'br', 'viewbox' => "$o,$n,$l,$s", 'bounded' => 1, 'state' => 'Paraná'];
+    foreach ([trim("$num $rua"), $rua] as $i => $ruaBusca) {
+        if ($i === 1) { if ($num === '') break; usleep(1100000); }
+        $j = http_json('https://nominatim.openstreetmap.org/search?' . http_build_query($base + ['street' => $ruaBusca]), $ua) ?: [];
+        foreach ($j as $res) {
+            $a = $res['address'] ?? [];
+            $cidade = $a['city'] ?? $a['town'] ?? $a['municipality'] ?? null;
+            $nomes = array_values(array_filter([$a['suburb'] ?? null, $a['neighbourhood'] ?? null, $a['quarter'] ?? null, $a['city_district'] ?? null, $a['residential'] ?? null]));
+            $fonte = $i ? 'osm-rua' : 'osm';
+            if (!$restringir) return ['lat' => (float)$res['lat'], 'lng' => (float)$res['lon'], 'bairro' => $nomes[0] ?? null, 'status' => 'ok', 'fonte' => $fonte, 'consultou' => true];
+            if ($b = bairro_permitido($cidade, $nomes)) return ['lat' => (float)$res['lat'], 'lng' => (float)$res['lon'], 'bairro' => $b, 'status' => 'ok', 'fonte' => $fonte, 'consultou' => true];
+            $foraEm ??= ['bairro' => trim(($nomes[0] ?? 'outro bairro') . ($cidade ? " ($cidade)" : '')), 'lat' => (float)$res['lat'], 'lng' => (float)$res['lon']];
+        }
+    }
+    return $foraEm ? ['status' => 'fora_bairro', 'fonte' => 'osm', 'consultou' => true] + $foraEm + $vazio : ['fonte' => 'osm', 'consultou' => true] + $vazio;
 }
 
+/** Endereço -> ['lat','lng','bairro','status'], usando o cache. */
 function geo_localizar(string $rua, string $num, bool &$consultou = false): array {
     $c = geo_cache($rua, $num);
     if ($c !== null) { $consultou = false; return $c; }
-    [$lat, $lng, $fonte, $consultou] = geo_consultar($rua, $num);
-    db()->prepare("REPLACE INTO geocache (chave, lat, lng, fonte) VALUES (?,?,?,?)")->execute([geo_chave($rua, $num), $lat, $lng, $fonte]);
-    return [$lat, $lng];
+    $r = geo_consultar($rua, $num);
+    $consultou = (bool)$r['consultou'];
+    db()->prepare("REPLACE INTO geocache (chave, lat, lng, fonte, bairro, status) VALUES (?,?,?,?,?,?)")
+        ->execute([geo_chave($rua, $num), $r['lat'], $r['lng'], $r['fonte'], $r['bairro'] ? mb_substr($r['bairro'], 0, 120) : null, $r['status']]);
+    return ['lat' => $r['lat'], 'lng' => $r['lng'], 'bairro' => $r['bairro'], 'status' => $r['status']];
 }
 
 // ---------- caixas a partir das paradas ----------
@@ -361,15 +418,37 @@ function zona_do_ponto(array $p, array $quads): array {
 }
 
 /** Grupos pelos quadrantes. Entregas fora das zonas NÃO são distribuídas: vão para o grupo "fora". Retorna [grupos, avisos]. */
-function grupos_por_quadrante(string $data): array {
+/** Quadrante mais perto de um ponto, sem limite de distância: [id, nome, metros]. */
+function quadrante_mais_perto(array $p, array $quads): array {
+    $melhor = [null, null, INF];
+    foreach ($quads as $q) {
+        if (count($q['pontos']) < 3) continue;
+        $d = dentro_poligono($p, $q['pontos']) ? 0.0 : distancia_borda($p, $q['pontos']);
+        if ($d < $melhor[2]) $melhor = [(int)$q['id'], $q['nome'], $d];
+    }
+    return $melhor;
+}
+
+function grupos_por_quadrante(string $data, array $aceitas = []): array {
     $quads = quadrantes_ativos();
     $entregas = entregas_do_dia($data);
-    $grupoDe = []; $foraLista = []; $frestas = 0;
+    $aceitas = array_flip(array_map('intval', $aceitas));
+    $grupoDe = []; $foraLista = []; $frestas = 0; $aceitasLista = [];
     foreach ($entregas as $e) {
-        if ($e['lat'] === null) continue;
-        [$qid, $perto, $dist] = zona_do_ponto([(float)$e['lat'], (float)$e['lng']], $quads);
-        if ($qid !== null) { $grupoDe[$e['id']] = 'q' . $qid; if ($dist > 0) $frestas++; }
-        else { $grupoDe[$e['id']] = 'fora'; $foraLista[] = $e + ['zona_perto' => $perto, 'dist_m' => (int)round($dist)]; }
+        $foraBairro = ($e['geo_status'] ?? '') === 'fora_bairro';
+        if ($e['lat'] === null) { if ($foraBairro) { $grupoDe[$e['id']] = 'fora'; $foraLista[] = $e + ['zona_perto' => null, 'zona_id' => null, 'dist_m' => null, 'motivo' => 'Rua achada só em ' . ($e['bairro'] ?: 'outro bairro')]; } continue; }
+        $p = [(float)$e['lat'], (float)$e['lng']];
+        if (!$foraBairro) {
+            [$qid, , $dist] = zona_do_ponto($p, $quads);
+            if ($qid !== null) { $grupoDe[$e['id']] = 'q' . $qid; if ($dist > 0) $frestas++; continue; }
+        }
+        // fora dos bairros ou fora dos quadrantes: só entra se você aceitar mandar para o quadrante mais perto
+        [$pid, $pnome, $pdist] = quadrante_mais_perto($p, $quads);
+        $info = ['zona_perto' => $pnome, 'zona_id' => $pid, 'dist_m' => (int)round($pdist),
+                 'motivo' => $foraBairro ? 'Rua achada só em ' . ($e['bairro'] ?: 'outro bairro') : null];
+        if ($pid !== null && isset($aceitas[(int)$e['id']])) { $grupoDe[$e['id']] = 'q' . $pid; $aceitasLista[] = $e + $info; continue; }
+        $grupoDe[$e['id']] = 'fora';
+        $foraLista[] = $e + $info;
     }
     $semLocal = count($entregas) - count($grupoDe);
     completar_sem_local($entregas, $grupoDe);
@@ -377,13 +456,18 @@ function grupos_por_quadrante(string $data): array {
     foreach ($quads as $q) $grupos['q' . $q['id']] = ['chave' => 'q' . $q['id'], 'nome' => $q['nome'], 'cor' => $q['cor'], 'motoboy_id' => $q['motoboy_id'], 'pontos' => $q['pontos'], 'entregas' => []];
     $grupos['fora'] = ['chave' => 'fora', 'nome' => 'FORA DOS QUADRANTES', 'cor' => '#7A7A7A', 'motoboy_id' => null, 'pontos' => null, 'entregas' => [], 'fora' => true];
     foreach ($entregas as $e) if (isset($grupoDe[$e['id']])) $grupos[$grupoDe[$e['id']]]['entregas'][] = $e;
-    return [array_values(array_filter($grupos, fn($g) => $g['entregas'])), ['fora' => count($foraLista), 'fora_lista' => $foraLista, 'fresta' => $frestas, 'sem_local' => $semLocal]];
+    return [array_values(array_filter($grupos, fn($g) => $g['entregas'])), ['fora' => count($foraLista), 'fora_lista' => $foraLista, 'aceitas' => $aceitasLista, 'fresta' => $frestas, 'sem_local' => $semLocal]];
 }
 
 /** Divisão automática em setores (fatias de pizza saindo do CD), com pacotes equilibrados. */
-function grupos_por_setor(string $data, array $motoboyIds): array {
+function grupos_por_setor(string $data, array $motoboyIds, array $aceitas = []): array {
     $n = max(1, count($motoboyIds));
-    $entregas = entregas_do_dia($data);
+    $todas = entregas_do_dia($data);
+    $ac = array_flip(array_map('intval', $aceitas));
+    $dentro = fn($e) => ($e['geo_status'] ?? '') !== 'fora_bairro' || (isset($ac[(int)$e['id']]) && $e['lat'] !== null);
+    $foraB = array_values(array_filter($todas, fn($e) => !$dentro($e)));
+    $entregas = array_values(array_filter($todas, $dentro));
+    $aceitasLista = array_values(array_filter($todas, fn($e) => ($e['geo_status'] ?? '') === 'fora_bairro' && $dentro($e)));
     $com = array_values(array_filter($entregas, fn($e) => $e['lat'] !== null));
     if (!$com) return [[], []];
     $centro = cd_posicao();
@@ -405,7 +489,13 @@ function grupos_por_setor(string $data, array $motoboyIds): array {
     $grupos = [];
     for ($i = 0; $i < $n; $i++) $grupos['s' . $i] = ['chave' => 's' . $i, 'nome' => 'Setor ' . ($i + 1), 'cor' => PALETA[$i % count(PALETA)], 'motoboy_id' => $motoboyIds[$i] ?? null, 'entregas' => []];
     foreach ($entregas as $e) if (isset($grupoDe[$e['id']])) $grupos[$grupoDe[$e['id']]]['entregas'][] = $e;
-    return [array_values($grupos), []];
+    $avisos = [];
+    if ($foraB) {
+        $grupos['fora'] = ['chave' => 'fora', 'nome' => 'FORA DOS BAIRROS', 'cor' => '#7A7A7A', 'motoboy_id' => null, 'pontos' => null, 'entregas' => $foraB, 'fora' => true];
+        $avisos = ['fora' => count($foraB), 'fora_lista' => array_map(fn($e) => $e + ['zona_perto' => $e['lat'] !== null ? 'setor mais perto' : null, 'zona_id' => $e['lat'] !== null ? 0 : null, 'dist_m' => null, 'motivo' => 'Rua achada só em ' . ($e['bairro'] ?: 'outro bairro')], $foraB)];
+    }
+    if ($aceitasLista) $avisos['aceitas'] = array_map(fn($e) => $e + ['zona_perto' => 'setor mais perto', 'zona_id' => 0, 'dist_m' => null, 'motivo' => 'Rua achada só em ' . ($e['bairro'] ?: 'outro bairro')], $aceitasLista);
+    return [array_values($grupos), $avisos];
 }
 
 /** Cria as rotas do dia a partir dos grupos (substitui as rotas desse dia). */
@@ -523,14 +613,14 @@ function criar_rotas_por_motoboy(string $data, array $porMoto): array {
     try {
         $pdo->prepare("DELETE FROM rotas WHERE data = ?")->execute([$data]);
         $insR = $pdo->prepare("INSERT INTO rotas (motoboy_id, data, descricao, cor, valor_entrega) VALUES (?,?,?,?,(SELECT valor_entrega FROM usuarios WHERE id = ?))");
-        $insP = $pdo->prepare("INSERT INTO paradas (rota_id, numero, entrega, endereco, numero_casa, cidade, pacotes, lat, lng, geo_tentado) VALUES (?,?,?,?,?,'',?,?,?,1)");
+        $insP = $pdo->prepare("INSERT INTO paradas (rota_id, numero, entrega, endereco, numero_casa, bairro, cidade, pacotes, lat, lng, geo_tentado) VALUES (?,?,?,?,?,?,'',?,?,?,1)");
         $rotas = [];
         foreach ($porMoto as $mid => $m) {
             $insR->execute([$mid, $data, implode(' + ', $m['nomes']), $m['cor'], $mid]);
             $rid = (int)$pdo->lastInsertId(); $rotas[] = $rid;
             usort($m['entregas'], fn($a, $b) => $a['entrega'] <=> $b['entrega']);
             $n = 0;
-            foreach ($m['entregas'] as $e) $insP->execute([$rid, ++$n, $e['entrega'], $e['rua'], $e['numero_casa'], $e['pacotes'], $e['lat'], $e['lng']]);
+            foreach ($m['entregas'] as $e) $insP->execute([$rid, ++$n, $e['entrega'], $e['rua'], $e['numero_casa'], ($e['geo_status'] ?? '') === 'ok' ? $e['bairro'] : null, $e['pacotes'], $e['lat'], $e['lng']]);
         }
         $pdo->commit();
     } catch (Throwable $ex) { $pdo->rollBack(); throw $ex; }
@@ -878,3 +968,16 @@ function sugerir_socorristas(int $rotaId): array {
     usort($out, fn($a, $b) => $a['custo'] <=> $b['custo']);
     return $out;
 }
+
+
+// Bairros atendidos: guarda o bairro de cada entrega e separa quem está fora
+function garantir_schema_v10(): void {
+    $flag = __DIR__ . '/.schema_v10';
+    if (file_exists($flag)) return;
+    $col = fn($t, $c) => (bool)db()->query("SHOW COLUMNS FROM $t LIKE '$c'")->fetch();
+    if (!$col('entregas', 'bairro')) db()->exec("ALTER TABLE entregas ADD COLUMN bairro VARCHAR(120) NULL, ADD COLUMN geo_status VARCHAR(20) NULL");
+    if (!$col('geocache', 'bairro')) db()->exec("ALTER TABLE geocache ADD COLUMN bairro VARCHAR(120) NULL, ADD COLUMN status VARCHAR(20) NULL");
+    db()->exec("DELETE FROM geocache"); // a regra mudou: procura de novo só nos bairros atendidos
+    @touch($flag);
+}
+garantir_schema_v10();

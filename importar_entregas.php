@@ -13,10 +13,10 @@ if (($_POST['acao'] ?? '') === 'ler' && csrf_ok()) {
     $pdo = db();
     $pdo->beginTransaction();
     $pdo->prepare("DELETE FROM entregas WHERE data = ?")->execute([$data]);
-    $ins = $pdo->prepare("INSERT INTO entregas (data, entrega, rua, numero_casa, pacotes, lat, lng, geo_tentado) VALUES (?,?,?,?,?,?,?,?)");
+    $ins = $pdo->prepare("INSERT INTO entregas (data, entrega, rua, numero_casa, pacotes, lat, lng, bairro, geo_status, geo_tentado) VALUES (?,?,?,?,?,?,?,?,?,?)");
     foreach ($lido['itens'] as $it) {
         $c = geo_cache($it['rua'], $it['numero_casa']);
-        $ins->execute([$data, $it['entrega'], $it['rua'], $it['numero_casa'], $it['pacotes'], $c[0] ?? null, $c[1] ?? null, $c === null ? 0 : 1]);
+        $ins->execute([$data, $it['entrega'], $it['rua'], $it['numero_casa'], $it['pacotes'], $c['lat'] ?? null, $c['lng'] ?? null, $c['bairro'] ?? null, $c['status'] ?? null, $c === null ? 0 : 1]);
     }
     $pdo->commit();
     $pac = array_sum(array_column($lido['itens'], 'pacotes'));

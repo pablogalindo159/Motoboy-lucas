@@ -211,3 +211,9 @@ tr.achada td { background: #EEFBD9; }
 .sug-nome small { color: var(--suave); font-weight: 500; margin-left: .3rem; }
 .sug-nome small.livre { color: var(--verde); font-weight: 600; }
 .sug-info { font-size: .88rem; color: var(--suave); }
+.bairros-atendidos { margin: .8rem 0; }
+.bairros-atendidos textarea { font-size: .92rem; }
+.fora-quad tr.aceita td { background: #EEFBD9; }
+.fora-quad label.aceitar { display: flex; gap: .4rem; align-items: center; cursor: pointer; white-space: nowrap; }
+.fora-quad label.aceitar input { width: auto; accent-color: #000; }
+.aviso.ok.fora-quad { border-left-color: var(--verde); }

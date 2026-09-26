@@ -5,7 +5,7 @@ exigir('admin');
 $data = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['data'] ?? '') ? $_GET['data'] : date('Y-m-d');
 topo('Montando rotas', 'rotas');
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=16">
+<link rel="stylesheet" href="assets/sacas.css?v=18">
 <h1>Localizando as entregas de <?= data_br($data) ?></h1>
 <div class="cartao processo">
   <p id="etapa">Localizando endereços no mapa…</p>
@@ -33,11 +33,15 @@ async function rodar() {
     document.getElementById('barra').style.width = (j.total ? Math.round(feitos / j.total * 100) : 100) + '%';
     const vel = (feitos - base) / ((Date.now() - inicio) / 1000);
     const falta = vel > 0 ? Math.ceil(j.pendentes / vel / 60) : null;
-    document.getElementById('detalhe').textContent = `${feitos} de ${j.total} endereços` + (falta ? ` · cerca de ${falta} min restantes` : '') + (j.sem_local ? ` · ${j.sem_local} não encontrados` : '');
+    document.getElementById('detalhe').textContent = `${feitos} de ${j.total} endereços` + (falta ? ` · cerca de ${falta} min restantes` : '') + (j.fora_bairro ? ` · ${j.fora_bairro} fora dos bairros` : '') + (j.sem_local ? ` · ${j.sem_local} não encontrados` : '');
     if (!j.pendentes) break;
   }
   document.getElementById('etapa').textContent = 'Endereços localizados.';
-  document.getElementById('resumo').textContent = j.sem_local ? `${j.sem_local} endereços não foram achados no mapa; eles vão junto com as entregas de número vizinho.` : 'Todos os endereços foram achados.';
+  const partes = [];
+  if (j.fora_bairro) partes.push(`⚠ ${j.fora_bairro} entregas ficaram FORA dos bairros atendidos (a rua só existe em outro bairro). Elas não serão distribuídas; veja quais são na tela de distribuição.`);
+  if (j.sem_local) partes.push(`${j.sem_local} endereços não foram achados no mapa; eles vão junto com as entregas de número vizinho.`);
+  document.getElementById('resumo').textContent = partes.join(' ') || 'Todos os endereços foram achados nos bairros atendidos.';
+  if (j.fora_bairro) document.getElementById('resumo').className = 'txt-erro';
   document.getElementById('fim').hidden = false;
 }
 rodar();

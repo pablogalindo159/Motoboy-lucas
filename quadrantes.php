@@ -50,6 +50,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
         db()->prepare("DELETE FROM quadrantes WHERE id = ?")->execute([(int)$_POST['id']]);
         flash('Quadrante excluído.');
     }
+    if ($acao === 'bairros') {
+        $lista = [];
+        foreach (preg_split('/\r?\n/', trim($_POST['bairros'] ?? '')) as $linha) {
+            if (!str_contains($linha, ':')) continue;
+            [$cid, $bs] = array_map('trim', explode(':', $linha, 2));
+            $bs = array_values(array_filter(array_map('trim', explode(',', $bs))));
+            if ($cid !== '' && $bs) $lista[$cid] = $bs;
+        }
+        if (!$lista) flash('Escreva uma cidade por linha: "Cidade: bairro, bairro, bairro".', 'erro');
+        else {
+            cfg_salvar('bairros_atendidos', json_encode($lista, JSON_UNESCAPED_UNICODE));
+            db()->exec("DELETE FROM geocache"); // os endereços passam a ser procurados de novo com a lista nova
+            flash('Bairros atendidos salvos. Carregue a lista do dia de novo para procurar os endereços com a lista nova.');
+        }
+    }
     if ($acao === 'fixos') {
         $n = carregar_quadrantes_fixos(true);
         flash("$n zonas fixas restauradas (motoboys padrão mantidos).");
@@ -83,7 +98,7 @@ topo('Quadrantes', 'rotas', true);
 ?>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
-<link rel="stylesheet" href="assets/sacas.css?v=16">
+<link rel="stylesheet" href="assets/sacas.css?v=18">
 <a href="rotas.php" class="voltar">← Rotas</a>
 <h1>Quadrantes</h1>
 <div class="duas-colunas quadrantes">
@@ -107,6 +122,14 @@ topo('Quadrantes', 'rotas', true);
       </form>
     <?php endforeach; ?>
     <?php if (!$quads): ?><p class="vazio">Nenhum quadrante ainda. Desenhe no mapa ou importe do Google My Maps.</p><?php endif; ?>
+
+    <form method="post" class="form cartao bairros-atendidos">
+      <?= csrf_field() ?><input type="hidden" name="acao" value="bairros">
+      <h2>Bairros atendidos</h2>
+      <p class="dica">Os endereços só são procurados nestes bairros. Se a rua só existir em outro bairro, a entrega fica de fora e o sistema avisa. Uma cidade por linha.</p>
+      <textarea name="bairros" rows="4"><?php foreach (bairros_atendidos() as $cid => $bs) echo e($cid . ': ' . implode(', ', $bs)) . "\n"; ?></textarea>
+      <button class="btn">Salvar bairros</button>
+    </form>
 
     <form method="post" class="restaurar" onsubmit="return confirm('Voltar para as 19 zonas fixas? Zonas desenhadas ou importadas por você serão apagadas.')">
       <?= csrf_field() ?><button class="btn pequeno" name="acao" value="fixos">Restaurar as 19 zonas fixas</button>

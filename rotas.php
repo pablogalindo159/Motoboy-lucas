@@ -35,7 +35,7 @@ $rotas = $s->fetchAll();
 
 // todas as entregas da lista do dia, com o motoboy que ficou com cada uma (ou sem motoboy) e a zona
 $s = db()->prepare("
-  SELECT e.entrega, e.rua, e.numero_casa, e.pacotes, e.lat, e.lng, x.status, x.nome motoboy, x.cor
+  SELECT e.entrega, e.rua, e.numero_casa, e.pacotes, e.lat, e.lng, e.bairro, e.geo_status, x.status, x.nome motoboy, x.cor
   FROM entregas e
   LEFT JOIN (SELECT p.entrega, p.status, u.nome, r.cor FROM paradas p JOIN rotas r ON r.id = p.rota_id JOIN usuarios u ON u.id = r.motoboy_id
              WHERE r.data = ? AND p.entrega IS NOT NULL) x ON x.entrega = e.entrega
@@ -44,11 +44,12 @@ $s->execute([$data, $data]);
 $lista = $s->fetchAll();
 $quadsLista = quadrantes_ativos();
 foreach ($lista as &$it) {
+    if ($it['geo_status'] === 'fora_bairro') { $it['zona'] = 'fora dos bairros · achada em ' . ($it['bairro'] ?: 'outro bairro'); $it['fora'] = true; $it['sem_local'] = false; continue; }
     if ($it['lat'] === null) { $it['zona'] = null; $it['fora'] = false; $it['sem_local'] = true; continue; }
     [$qid, $perto, $dist] = zona_do_ponto([(float)$it['lat'], (float)$it['lng']], $quadsLista);
     $it['sem_local'] = false;
     $it['fora'] = $quadsLista && $qid === null;
-    $it['zona'] = $qid !== null ? $perto : ($perto ? "fora · " . ($dist >= 1000 ? number_format($dist / 1000, 1, ',', '') . ' km' : round($dist) . ' m') . " de $perto" : null);
+    $it['zona'] = $qid !== null ? $perto . ($it['bairro'] ? ' · ' . $it['bairro'] : '') : ($perto ? "fora · " . ($dist >= 1000 ? number_format($dist / 1000, 1, ',', '') . ' km' : round($dist) . ' m') . " de $perto" : null);
 }
 unset($it);
 $contagem = ['todas' => count($lista), 'sem' => count(array_filter($lista, fn($i) => !$i['motoboy'])), 'fora' => count(array_filter($lista, fn($i) => $i['fora']))];
@@ -57,7 +58,7 @@ $rotuloStatus = ['aberta' => 'Aguardando', 'em_andamento' => 'Em andamento', 'fi
 
 topo('Rotas', 'rotas');
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=16">
+<link rel="stylesheet" href="assets/sacas.css?v=18">
 <div class="cabecalho-rota"><h1>Rotas</h1>
   <div class="acoes">
     <a class="btn" href="cd.php">Posição do CD</a>
@@ -123,7 +124,7 @@ topo('Rotas', 'rotas');
   <div class="filtros" role="group" aria-label="Filtrar">
     <button type="button" class="ativo" data-f="todas">Todas <b><?= $contagem['todas'] ?></b></button>
     <button type="button" data-f="sem">Sem motoboy <b><?= $contagem['sem'] ?></b></button>
-    <?php if ($quadsLista): ?><button type="button" data-f="fora">Fora do quadrante <b><?= $contagem['fora'] ?></b></button><?php endif; ?>
+    <button type="button" data-f="fora">Fora dos bairros / quadrantes <b><?= $contagem['fora'] ?></b></button>
   </div>
   <p class="dica" id="achados"></p>
   <div class="tabela-wrap tabela-longa">

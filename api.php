@@ -89,20 +89,22 @@ case 'geocodificar_lote':
     set_time_limit(60);
     $fim = microtime(true) + 20;
     $prox = db()->prepare("SELECT id, rua, numero_casa FROM entregas WHERE data = ? AND geo_tentado = 0 AND lat IS NULL LIMIT 1");
-    $up = db()->prepare("UPDATE entregas SET lat = ?, lng = ?, geo_tentado = 1 WHERE id = ? OR (data = ? AND lat IS NULL AND rua <=> ? AND numero_casa <=> ?)");
+    $up = db()->prepare("UPDATE entregas SET lat = ?, lng = ?, bairro = ?, geo_status = ?, geo_tentado = 1 WHERE id = ? OR (data = ? AND lat IS NULL AND rua <=> ? AND numero_casa <=> ?)");
     while (microtime(true) < $fim) {
         $prox->execute([$data]);
         $p = $prox->fetch();
         if (!$p) break;
         $consultou = false;
-        [$lat, $lng] = geo_localizar($p['rua'], (string)$p['numero_casa'], $consultou);
-        $up->execute([$lat, $lng, $p['id'], $data, $p['rua'], $p['numero_casa']]);
+        $g = geo_localizar($p['rua'], (string)$p['numero_casa'], $consultou);
+        $up->execute([$g['lat'], $g['lng'], $g['bairro'], $g['status'], $p['id'], $data, $p['rua'], $p['numero_casa']]);
         if ($consultou) usleep(1100000); // limite do OpenStreetMap: 1 consulta por segundo
     }
-    $c = db()->prepare("SELECT COUNT(*) total, COALESCE(SUM(geo_tentado = 0 AND lat IS NULL),0) pendentes, COALESCE(SUM(geo_tentado = 1 AND lat IS NULL),0) sem_local FROM entregas WHERE data = ?");
+    $c = db()->prepare("SELECT COUNT(*) total, COALESCE(SUM(geo_tentado = 0 AND lat IS NULL),0) pendentes,
+                               COALESCE(SUM(geo_tentado = 1 AND lat IS NULL AND COALESCE(geo_status,'') <> 'fora_bairro'),0) sem_local,
+                               COALESCE(SUM(geo_status = 'fora_bairro'),0) fora_bairro FROM entregas WHERE data = ?");
     $c->execute([$data]);
     $t = $c->fetch();
-    responder(['total' => (int)$t['total'], 'pendentes' => (int)$t['pendentes'], 'sem_local' => (int)$t['sem_local']]);
+    responder(['total' => (int)$t['total'], 'pendentes' => (int)$t['pendentes'], 'sem_local' => (int)$t['sem_local'], 'fora_bairro' => (int)$t['fora_bairro']]);
 
 // ---------- ADMIN: montar a ordem de todas as rotas do dia ----------
 case 'otimizar_dia':

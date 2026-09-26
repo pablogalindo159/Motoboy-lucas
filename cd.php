@@ -8,7 +8,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
     if ($acao === 'buscar') {
         $end = trim($_POST['endereco'] ?? '');
         $pos = strrpos($end, ',');
-        [$lat, $lng] = geo_consultar(trim($pos ? substr($end, 0, $pos) : $end), trim($pos ? substr($end, $pos + 1) : ''));
+        ['lat' => $lat, 'lng' => $lng] = geo_consultar(trim($pos ? substr($end, 0, $pos) : $end), trim($pos ? substr($end, $pos + 1) : ''), false); // o CD pode ficar fora dos bairros atendidos
         if ($lat) { cfg_salvar('cd_lat', (string)$lat); cfg_salvar('cd_lng', (string)$lng); cfg_salvar('cd_endereco', $end); flash('CD localizado. Confira no mapa e arraste o marcador se precisar.'); }
         else flash('Endereço não encontrado. Clique no mapa no lugar do CD.', 'erro');
     }
