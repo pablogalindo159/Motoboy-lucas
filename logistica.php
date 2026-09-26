@@ -124,7 +124,7 @@ function geo_localizar(string $rua, string $num, bool &$consultou = false): arra
 // Refaz as sacas da rota pelas entregas dela (caixa = entrega arredondada para a dezena),
 // mantendo o que já foi marcado como coletado e avisando quando a caixa é dividida com outro motoboy.
 function recalcular_sacas_rota(int $rotaId): void {
-    $s = db()->prepare("SELECT entrega, pacotes FROM paradas WHERE rota_id = ? AND entrega IS NOT NULL ORDER BY entrega");
+    $s = db()->prepare("SELECT entrega, pacotes FROM paradas WHERE rota_id = ? AND entrega IS NOT NULL AND socorro_id IS NULL ORDER BY entrega");
     $s->execute([$rotaId]);
     $caixas = [];
     foreach ($s->fetchAll() as $p) {
@@ -132,7 +132,7 @@ function recalcular_sacas_rota(int $rotaId): void {
         $caixas[$c]['qtd'] = ($caixas[$c]['qtd'] ?? 0) + (int)$p['pacotes'];
         $caixas[$c]['entregas'][] = (int)$p['entrega'];
     }
-    if (!$caixas) return;
+    if (!$caixas) { db()->prepare("DELETE FROM sacas WHERE rota_id = ?")->execute([$rotaId]); return; }
 
     $s = db()->prepare("SELECT caixa, coletada, coletada_em FROM sacas WHERE rota_id = ?");
     $s->execute([$rotaId]);
@@ -715,4 +715,98 @@ function cor_da_parte(string $cor, int $i): string {
     if ($i === 0) return $cor;
     $pos = array_search(strtoupper($cor), PALETA, true);
     return PALETA[((($pos === false ? 0 : $pos) + 5 * $i) % count(PALETA))];
+}
+
+// =====================================================================
+// Ambulância: passar as entregas pendentes de um motoboy para outro
+// =====================================================================
+function garantir_schema_v9(): void {
+    $flag = __DIR__ . '/.schema_v9';
+    if (file_exists($flag)) return;
+    db()->exec("CREATE TABLE IF NOT EXISTS socorros (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        data DATE NOT NULL,
+        de_motoboy INT NOT NULL,
+        para_motoboy INT NOT NULL,
+        rota_origem INT NULL,
+        rota_destino INT NULL,
+        entregas INT NOT NULL,
+        pacotes INT NOT NULL,
+        lat DECIMAL(10,7) NULL,
+        lng DECIMAL(10,7) NULL,
+        status ENUM('aguardando','coletado','cancelado') NOT NULL DEFAULT 'aguardando',
+        criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        coletado_em DATETIME NULL,
+        INDEX (data), INDEX (para_motoboy), INDEX (de_motoboy)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    if (!db()->query("SHOW COLUMNS FROM paradas LIKE 'socorro_id'")->fetch())
+        db()->exec("ALTER TABLE paradas ADD COLUMN socorro_id INT NULL, ADD INDEX (socorro_id)");
+    @touch($flag);
+}
+garantir_schema_v9();
+
+/** Passa as entregas pendentes da rota para outro motoboy (o socorrista). As feitas ficam com o original. */
+function acionar_ambulancia(int $rotaId, int $para): array {
+    $pdo = db();
+    $s = $pdo->prepare("SELECT r.*, u.nome, u.lat ulat, u.lng ulng FROM rotas r JOIN usuarios u ON u.id = r.motoboy_id WHERE r.id = ?");
+    $s->execute([$rotaId]);
+    $r = $s->fetch();
+    if (!$r) throw new RuntimeException('Rota não encontrada.');
+    if ((int)$r['motoboy_id'] === $para) throw new RuntimeException('Escolha outro motoboy para socorrer.');
+    $s = $pdo->prepare("SELECT id, pacotes, lat, lng FROM paradas WHERE rota_id = ? AND status = 'pendente' ORDER BY numero, id");
+    $s->execute([$rotaId]);
+    $pend = $s->fetchAll();
+    if (!$pend) throw new RuntimeException('Esta rota não tem entregas pendentes.');
+
+    // onde buscar: última posição do GPS do motoboy parado; sem GPS, a primeira entrega pendente
+    $lat = $r['ulat'] ?: $pend[0]['lat']; $lng = $r['ulng'] ?: $pend[0]['lng'];
+    $pdo->beginTransaction();
+    try {
+        $s = $pdo->prepare("SELECT id FROM rotas WHERE motoboy_id = ? AND data = ? ORDER BY id LIMIT 1");
+        $s->execute([$para, $r['data']]);
+        $dest = (int)$s->fetchColumn();
+        if (!$dest) {
+            $pdo->prepare("INSERT INTO rotas (motoboy_id, data, descricao, cor, valor_entrega, chegada_cd, saida_cd)
+                           VALUES (?,?,?,?,(SELECT valor_entrega FROM usuarios WHERE id = ?), NOW(), NOW())")
+                ->execute([$para, $r['data'], '🚑 Socorro de ' . $r['nome'], $r['cor'], $para]);
+            $dest = (int)$pdo->lastInsertId();
+        }
+        $pdo->prepare("INSERT INTO socorros (data, de_motoboy, para_motoboy, rota_origem, rota_destino, entregas, pacotes, lat, lng) VALUES (?,?,?,?,?,?,?,?,?)")
+            ->execute([$r['data'], $r['motoboy_id'], $para, $rotaId, $dest, count($pend), array_sum(array_column($pend, 'pacotes')), $lat, $lng]);
+        $sid = (int)$pdo->lastInsertId();
+        $s = $pdo->prepare("SELECT COALESCE(MAX(numero), 0) FROM paradas WHERE rota_id = ?");
+        $s->execute([$dest]);
+        $num = (int)$s->fetchColumn();
+        $up = $pdo->prepare("UPDATE paradas SET rota_id = ?, numero = ?, socorro_id = ? WHERE id = ?");
+        foreach ($pend as $p) $up->execute([$dest, ++$num, $sid, $p['id']]);
+        $pdo->commit();
+    } catch (Throwable $ex) { $pdo->rollBack(); throw $ex; }
+    foreach ([$rotaId, $dest] as $rid) { recalcular_sacas_rota($rid); atualizar_status_rota($rid); }
+    return ['socorro' => $sid, 'rota_destino' => $dest, 'entregas' => count($pend), 'pacotes' => array_sum(array_column($pend, 'pacotes'))];
+}
+
+/** Desfaz a ambulância enquanto o socorrista não pegou os pacotes: as pendentes voltam para o motoboy original. */
+function cancelar_ambulancia(int $sid): void {
+    $pdo = db();
+    $s = $pdo->prepare("SELECT * FROM socorros WHERE id = ?");
+    $s->execute([$sid]);
+    $x = $s->fetch();
+    if (!$x || $x['status'] !== 'aguardando') throw new RuntimeException('Esta ambulância não pode mais ser cancelada.');
+    $pdo->beginTransaction();
+    try {
+        $s = $pdo->prepare("SELECT COALESCE(MAX(numero), 0) FROM paradas WHERE rota_id = ?");
+        $s->execute([$x['rota_origem']]);
+        $num = (int)$s->fetchColumn();
+        $s = $pdo->prepare("SELECT id FROM paradas WHERE socorro_id = ? AND status = 'pendente' ORDER BY numero");
+        $s->execute([$sid]);
+        $up = $pdo->prepare("UPDATE paradas SET rota_id = ?, numero = ?, socorro_id = NULL WHERE id = ?");
+        foreach ($s->fetchAll(PDO::FETCH_COLUMN) as $pid) $up->execute([$x['rota_origem'], ++$num, $pid]);
+        $pdo->prepare("UPDATE socorros SET status = 'cancelado' WHERE id = ?")->execute([$sid]);
+        // rota criada só para o socorro e que ficou vazia: apaga
+        $s = $pdo->prepare("SELECT COUNT(*) FROM paradas WHERE rota_id = ?");
+        $s->execute([$x['rota_destino']]);
+        if (!(int)$s->fetchColumn()) $pdo->prepare("DELETE FROM rotas WHERE id = ? AND descricao LIKE '🚑 Socorro%'")->execute([$x['rota_destino']]);
+        $pdo->commit();
+    } catch (Throwable $ex) { $pdo->rollBack(); throw $ex; }
+    foreach ([$x['rota_origem'], $x['rota_destino']] as $rid) { recalcular_sacas_rota((int)$rid); atualizar_status_rota((int)$rid); }
 }

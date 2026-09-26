@@ -163,6 +163,13 @@ case 'pacote_voador':
     }
     responder(['ok' => true]);
 
+// ---------- MOTOBOY: socorrista pegou os pacotes do motoboy parado ----------
+case 'socorro_coletado':
+    $u = exigir('motoboy', true);
+    $s = db()->prepare("UPDATE socorros SET status = 'coletado', coletado_em = NOW() WHERE id = ? AND para_motoboy = ? AND status = 'aguardando'");
+    $s->execute([(int)($_POST['socorro_id'] ?? 0), $u['id']]);
+    responder(['ok' => true]);
+
 default:
     responder(['erro' => 'Ação desconhecida'], 400);
 }

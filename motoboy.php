@@ -29,6 +29,15 @@ $pendentes = array_values(array_filter($paradas, fn($p) => $p['status'] === 'pen
 $feitas = array_values(array_filter($paradas, fn($p) => $p['status'] !== 'pendente'));
 $entregues = count(array_filter($paradas, fn($p) => $p['status'] === 'entregue'));
 $prox = $pendentes[0] ?? null;
+// ambulância: socorro que eu preciso buscar / entregas minhas que foram para outro
+$s = db()->prepare("SELECT x.*, u.nome de_nome, u.telefone de_tel FROM socorros x JOIN usuarios u ON u.id = x.de_motoboy
+                    WHERE x.para_motoboy = ? AND x.data = ? AND x.status = 'aguardando' ORDER BY x.id");
+$s->execute([$u['id'], $hoje]);
+$socorrosBuscar = $s->fetchAll();
+$s = db()->prepare("SELECT x.*, u.nome para_nome FROM socorros x JOIN usuarios u ON u.id = x.para_motoboy
+                    WHERE x.de_motoboy = ? AND x.data = ? AND x.status <> 'cancelado' ORDER BY x.id DESC");
+$s->execute([$u['id'], $hoje]);
+$socorrosPassados = $s->fetchAll();
 $comFoto = [];
 if ($paradas) {
     $s = db()->prepare("SELECT parada_id, MAX(id) id FROM comprovantes WHERE parada_id IN (" . implode(',', array_map('intval', array_column($paradas, 'id'))) . ") GROUP BY parada_id");
@@ -59,7 +68,7 @@ topo('Minhas entregas');
 $sacasColetadas = count(array_filter($sacas, fn($x) => $x['coletada']));
 $corRota = $rota['cor'] ?? null;
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=14">
+<link rel="stylesheet" href="assets/sacas.css?v=15">
 <div class="app-moto">
   <header class="moto-topo">
     <img src="assets/icone.svg" alt="" width="40" height="40" class="icone-topo">
@@ -78,6 +87,24 @@ $corRota = $rota['cor'] ?? null;
   </nav>
   <?php endif; ?>
 
+  <?php foreach ($socorrosBuscar as $x):
+      $nums = []; foreach ($paradas as $p) if ((int)$p['socorro_id'] === (int)$x['id'] && $p['entrega']) $nums[] = (int)$p['entrega']; ?>
+    <section class="socorro">
+      <h2>🚑 Ambulância</h2>
+      <p>Busque as entregas de <b><?= e($x['de_nome']) ?></b>: <b><?= (int)$x['entregas'] ?></b> entregas, <b><?= (int)$x['pacotes'] ?></b> pacotes<?= $nums ? ' (nº ' . min($nums) . ' a ' . max($nums) . ')' : '' ?>.</p>
+      <p class="dica-socorro">Os pacotes estão com <?= e($x['de_nome']) ?>, não no CD. Vá até ele, pegue tudo e continue as entregas pela ordem.</p>
+      <div class="socorro-botoes">
+        <?php if ($x['lat']): ?><a class="btn grande" href="https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=<?= e($x['lat']) ?>,<?= e($x['lng']) ?>" target="_blank" rel="noopener">Ir até ele</a><?php endif; ?>
+        <?php if ($x['de_tel']): ?><a class="btn grande" href="tel:<?= e(preg_replace('/\D/', '', $x['de_tel'])) ?>">Ligar</a><?php endif; ?>
+        <button class="btn sucesso grande" onclick="socorroColetado(<?= (int)$x['id'] ?>)">Peguei os pacotes</button>
+      </div>
+    </section>
+  <?php endforeach; ?>
+  <?php foreach ($socorrosPassados as $x): ?>
+    <div class="aviso-socorro">🚑 Suas <?= (int)$x['entregas'] ?> entregas pendentes passaram para <b><?= e($x['para_nome']) ?></b> às <?= hora_br($x['criado_em']) ?>.
+      <?= $x['status'] === 'coletado' ? 'Ele já pegou os pacotes.' : 'Espere ele chegar para entregar os pacotes.' ?></div>
+  <?php endforeach; ?>
+
   <?php if (!$rota): ?>
     <section class="vazio-moto">
       <h1>Sem rota hoje</h1>
@@ -95,7 +122,8 @@ $corRota = $rota['cor'] ?? null;
     <section class="chegada" style="<?= $estiloCor ?>">
       <div class="faixa-cor"><span class="cor-motoboy"><?= e($rota['descricao'] ?: 'Sua cor') ?></span> Sua cor de hoje</div>
       <h1>Vá até o CD</h1>
-      <p>Hoje você tem <b><?= count($paradas) ?></b> entregas, <b><?= array_sum(array_column($sacas, 'quantidade')) ?></b> pacotes em <b><?= count($sacas) ?></b> caixas.</p>
+      <?php $deSocorro = count(array_filter($paradas, fn($p) => $p['socorro_id'])); ?>
+      <p>Hoje você tem <b><?= count($paradas) - $deSocorro ?></b> entregas, <b><?= array_sum(array_column($sacas, 'quantidade')) ?></b> pacotes em <b><?= count($sacas) ?></b> caixas<?= $deSocorro ? " (mais <b>$deSocorro</b> da ambulância, que não estão no CD)" : '' ?>.</p>
       <button class="btn primario grande largo" id="btn-cheguei" onclick="fase('chegou_cd')">Cheguei no CD</button>
     </section>
     <?php elseif ($sacas): $todas = $sacasColetadas === count($sacas); ?>
@@ -150,7 +178,7 @@ $corRota = $rota['cor'] ?? null;
 
     <?php if ($prox): ?>
     <section class="proxima">
-      <p class="rotulo">Próxima entrega · parada <?= count($feitas) + 1 ?> de <?= count($paradas) ?></p>
+      <p class="rotulo">Próxima entrega · parada <?= count($feitas) + 1 ?> de <?= count($paradas) ?><?= $prox['socorro_id'] ? ' · 🚑 ambulância' : '' ?></p>
       <div class="placa-parada"><small><?= $prox['entrega'] ? 'Entrega' : 'Parada' ?></small><?= (int)($prox['entrega'] ?: $prox['numero']) ?></div>
       <h1 class="endereco"><?= e($prox['endereco']) ?>, <?= e($prox['numero_casa']) ?></h1>
       <p class="bairro"><?= e($prox['bairro']) ?><?= $prox['bairro'] ? ' · ' : '' ?><?= e($prox['cidade']) ?></p>
@@ -176,8 +204,13 @@ $corRota = $rota['cor'] ?? null;
     </section>
     <?php else: ?>
     <section class="vazio-moto concluido">
+      <?php if ($socorrosPassados): ?>
+      <h1>Entregas com a ambulância</h1>
+      <p>Você fez <?= $entregues ?> entregas. As pendentes passaram para outro motoboy.</p>
+      <?php else: ?>
       <h1>Rota concluída</h1>
       <p><?= $entregues ?> de <?= count($paradas) ?> entregas feitas. Bom trabalho!</p>
+      <?php endif; ?>
     </section>
     <?php endif; ?>
 
@@ -186,7 +219,7 @@ $corRota = $rota['cor'] ?? null;
       <summary>Depois desta (<?= count($pendentes) - 1 ?>)</summary>
       <ol>
         <?php foreach (array_slice($pendentes, 1) as $p): ?>
-          <li><span class="num-parada"><?= (int)($p['entrega'] ?: $p['numero']) ?></span><div><?= e($p['endereco']) ?>, <?= e($p['numero_casa']) ?><small><?= e($p['bairro']) ?> · <?= (int)$p['pacotes'] ?> pct</small></div>
+          <li><span class="num-parada"><?= (int)($p['entrega'] ?: $p['numero']) ?></span><div><?= $p['socorro_id'] ? '🚑 ' : '' ?><?= e($p['endereco']) ?>, <?= e($p['numero_casa']) ?><small><?= e($p['bairro']) ?> · <?= (int)$p['pacotes'] ?> pct</small></div>
             <a href="<?= e(link_gmaps($p)) ?>" target="_blank" rel="noopener" class="btn pequeno">Ir</a></li>
         <?php endforeach; ?>
       </ol>
@@ -455,6 +488,13 @@ async function salvarVoador() {
   }
 }
 
+// ---- Ambulância ----
+async function socorroColetado(id) {
+  if (!confirm('Confirmar que pegou todos os pacotes?')) return;
+  try { const r = await post({ acao: 'socorro_coletado', socorro_id: id }); if (!r.ok) throw new Error(); location.reload(); }
+  catch (e) { alert('Não foi possível salvar. Confira a internet e toque de novo.'); }
+}
+
 // ---- Chegada e saída do CD ----
 const ROTA_ID = <?= (int)($rota['id'] ?? 0) ?>;
 async function fase(acao) {
@@ -489,7 +529,8 @@ function enviar(pos) {
 }
 // Dentro do app Android: o próprio app envia a localização, mesmo com o Waze/Maps na frente.
 const APP = window.NetPointApp;
-const EM_ROTA = <?= ($rota && $pendentes) ? 'true' : 'false' ?>;
+// em rota: tem entrega pendente, ou está esperando a ambulância (o socorrista precisa achar ele)
+const EM_ROTA = <?= (($rota && $pendentes) || array_filter($socorrosPassados, fn($x) => $x['status'] === 'aguardando') || $socorrosBuscar) ? 'true' : 'false' ?>;
 if (APP) {
   if (EM_ROTA) {
     APP.iniciarRastreio(CSRF, new URL('api.php', location.href).href);

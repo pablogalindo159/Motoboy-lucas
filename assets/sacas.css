@@ -184,3 +184,19 @@
 .selo.sem-moto { background: #F6DDD9; color: var(--vermelho); }
 .txt-erro { color: var(--vermelho); font-weight: 600; }
 tr.achada td { background: #EEFBD9; }
+
+/* ambulância */
+.ambulancia summary { cursor: pointer; font-weight: 700; }
+.ambulancia summary small { font-weight: 500; color: var(--suave); margin-left: .4rem; }
+.ambulancia .form { margin-top: .8rem; }
+.btn.perigo-cheio { background: var(--vermelho); color: #fff; border-color: var(--vermelho); }
+.aviso.ambul { border-left-color: var(--vermelho); background: #FBE4E1; display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
+.aviso.ambul form { margin: 0; }
+.socorro { background: var(--vermelho); color: #fff; padding: 1rem; }
+.socorro h2 { margin: 0 0 .4rem; font-size: 1.5rem; }
+.socorro p { margin: .3rem 0; }
+.dica-socorro { font-size: .9rem; color: #FBE4E1; }
+.socorro-botoes { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: .5rem; margin-top: .8rem; }
+.socorro .btn { border-color: #fff; }
+.socorro .btn.sucesso { background: #fff; color: var(--vermelho); border-color: #fff; }
+.aviso-socorro { background: #FBE4E1; color: var(--vermelho); padding: .8rem 1rem; font-weight: 500; border-bottom: 1px solid #E3B8B3; }

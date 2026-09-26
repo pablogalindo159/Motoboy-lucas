@@ -72,7 +72,7 @@ if (isset($_GET['csv'])) {
 
 topo('Financeiro', 'financeiro');
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=14">
+<link rel="stylesheet" href="assets/sacas.css?v=15">
 <div class="cabecalho-rota financeiro-topo">
   <div>
     <h1>Financeiro</h1>

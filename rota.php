@@ -82,6 +82,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
         flash('Paradas na ordem do número da entrega.');
     }
 
+    if ($acao === 'ambulancia') {
+        try {
+            $r = acionar_ambulancia($id, (int)($_POST['para'] ?? 0));
+            flash("🚑 Ambulância chamada: {$r['entregas']} entregas ({$r['pacotes']} pacotes) passaram para o socorrista. Ele já vê no celular onde buscar.");
+        } catch (Throwable $ex) { flash($ex->getMessage(), 'erro'); }
+    }
+    if ($acao === 'cancelar_ambulancia') {
+        try { cancelar_ambulancia((int)$_POST['socorro_id']); flash('Ambulância cancelada: as entregas voltaram para a rota original.'); }
+        catch (Throwable $ex) { flash($ex->getMessage(), 'erro'); }
+    }
+
     if ($acao === 'trocar_motoboy') {
         db()->prepare("UPDATE rotas SET motoboy_id = ? WHERE id = ?")->execute([(int)$_POST['motoboy_id'], $id]);
         flash('Motoboy da rota alterado.');
@@ -94,6 +105,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
 $s = db()->prepare("SELECT * FROM paradas WHERE rota_id = ? ORDER BY numero, id");
 $s->execute([$id]);
 $paradas = $s->fetchAll();
+
+$s = db()->prepare("SELECT x.*, de.nome de_nome, pa.nome para_nome FROM socorros x JOIN usuarios de ON de.id = x.de_motoboy JOIN usuarios pa ON pa.id = x.para_motoboy
+                    WHERE (x.rota_origem = ? OR x.rota_destino = ?) AND x.status <> 'cancelado' ORDER BY x.id DESC");
+$s->execute([$id, $id]);
+$socorros = $s->fetchAll();
+$pendentesRota = array_filter($paradas, fn($p) => $p['status'] === 'pendente');
 
 $fotos = [];
 if ($paradas) {
@@ -136,7 +153,38 @@ topo('Rota ' . $rota['motoboy'], 'rotas', true);
   </form>
 </div>
 
-<link rel="stylesheet" href="assets/sacas.css?v=14">
+<link rel="stylesheet" href="assets/sacas.css?v=15">
+<?php foreach ($socorros as $x): ?>
+  <div class="aviso ambul">
+    <b>🚑 Ambulância</b> · <?= e($x['de_nome']) ?> → <b><?= e($x['para_nome']) ?></b>:
+    <?= (int)$x['entregas'] ?> entregas, <?= (int)$x['pacotes'] ?> pacotes, às <?= hora_br($x['criado_em']) ?> —
+    <?= $x['status'] === 'coletado' ? 'pacotes coletados às ' . hora_br($x['coletado_em']) : 'aguardando o socorrista pegar os pacotes' ?>
+    <?php if ($x['status'] === 'aguardando' && (int)$x['rota_origem'] === $id): ?>
+      <form method="post" onsubmit="return confirm('Cancelar a ambulância? As entregas pendentes voltam para <?= e($x['de_nome']) ?>.')">
+        <?= csrf_field() ?><input type="hidden" name="acao" value="cancelar_ambulancia"><input type="hidden" name="socorro_id" value="<?= (int)$x['id'] ?>">
+        <button class="btn pequeno">Cancelar ambulância</button></form>
+    <?php endif; ?>
+  </div>
+<?php endforeach; ?>
+
+<?php if ($pendentesRota): ?>
+<details class="cartao ambulancia" id="ambulancia">
+  <summary>🚑 Chamar ambulância <small>moto quebrou? outro motoboy pega as entregas e continua</small></summary>
+  <form method="post" class="form" onsubmit="return confirm('Passar as ' + <?= count($pendentesRota) ?> + ' entregas pendentes para ' + this.para.selectedOptions[0].text + '?')">
+    <?= csrf_field() ?><input type="hidden" name="acao" value="ambulancia">
+    <p>As <b><?= count($pendentesRota) ?></b> entregas pendentes (<b><?= array_sum(array_column($pendentesRota, 'pacotes')) ?></b> pacotes) passam para o socorrista, na mesma ordem, depois das entregas dele.
+       As já feitas continuam com <?= e($rota['motoboy']) ?> e contam no financeiro dele.</p>
+    <label>Quem vai socorrer
+      <select name="para" required>
+        <option value="">Escolha…</option>
+        <?php foreach ($motoboys as $m): if ((int)$m['id'] === (int)$rota['motoboy_id']) continue; ?><option value="<?= $m['id'] ?>"><?= e($m['nome']) ?></option><?php endforeach; ?>
+      </select></label>
+    <button class="btn perigo-cheio">Chamar ambulância</button>
+    <p class="dica">O socorrista vê no celular onde buscar (última posição do GPS de <?= e($rota['motoboy']) ?>) e marca quando pegar os pacotes.</p>
+  </form>
+</details>
+<?php endif; ?>
+
 <?php if ($sacas): $col = count(array_filter($sacas, fn($x) => $x['coletada'])); ?>
 <div class="sacas-admin" style="--cor-rota:<?= e($rota['cor'] ?: '#8CF20A') ?>;--texto-rota:<?= texto_sobre($rota['cor'] ?: '#8CF20A') ?>">
   <div class="faixa">Sacas: <?= $col ?> de <?= count($sacas) ?> coletadas · <?= array_sum(array_column($sacas, 'quantidade')) ?> pacotes</div>
@@ -187,7 +235,7 @@ topo('Rota ' . $rota['motoboy'], 'rotas', true);
         <tbody>
         <?php foreach ($paradas as $p): ?>
           <tr>
-            <td><span class="num-parada <?= e($p['status']) ?>"><?= (int)$p['numero'] ?></span></td>
+            <td><span class="num-parada <?= e($p['status']) ?>"><?= (int)$p['numero'] ?></span><?= $p['socorro_id'] ? ' <span title="Veio de ambulância">🚑</span>' : '' ?></td>
             <td><?= $p['entrega'] ? '<b>' . (int)$p['entrega'] . '</b><br><small>caixa ' . intdiv((int)$p['entrega'], 10) * 10 . '</small>' : '—' ?></td>
             <td><?= e($p['endereco']) ?>, <?= e($p['numero_casa']) ?><?= $p['bairro'] ? ' – ' . e($p['bairro']) : '' ?>
               <?php if (!$p['lat']): ?><br><small class="txt-alerta">Sem posição no mapa</small><?php endif; ?>
