@@ -9,7 +9,7 @@ $linkTv = str_replace('//tv.php', '/tv.php', $linkTv);
 $data = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['data'] ?? '') ? $_GET['data'] : date('Y-m-d');
 topo('Painel', 'painel', true);
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=18">
+<link rel="stylesheet" href="assets/sacas.css?v=19">
 <div class="painel">
   <aside class="lateral">
     <form class="filtro-data">
@@ -19,6 +19,7 @@ topo('Painel', 'painel', true);
     <div id="lista"><p class="dica">Carregando…</p></div>
     <p class="dica" id="atualizado"></p>
     <a class="btn largo" href="importar_entregas.php?data=<?= e($data) ?>">Carregar lista de entregas do dia</a>
+    <a class="btn largo" href="caixas.php?data=<?= e($data) ?>" style="margin-top:.4rem">Caixas do dia (o que vai em cada caixa)</a>
     <a class="btn largo" href="quadrantes.php" style="margin-top:.4rem">Quadrantes</a>
     <details class="cartao tv-link">
       <summary>Tela da TV</summary>

@@ -68,7 +68,7 @@ topo('Minhas entregas');
 $sacasColetadas = count(array_filter($sacas, fn($x) => $x['coletada']));
 $corRota = $rota['cor'] ?? null;
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=18">
+<link rel="stylesheet" href="assets/sacas.css?v=19">
 <div class="app-moto">
   <header class="moto-topo">
     <img src="assets/icone.svg" alt="" width="40" height="40" class="icone-topo">
@@ -152,6 +152,15 @@ $corRota = $rota['cor'] ?? null;
           </button>
         <?php endforeach; ?>
       </div>
+      <?php $porCx = []; foreach ($paradas as $p) if ($p['entrega'] !== null && !$p['socorro_id']) $porCx[intdiv((int)$p['entrega'], 10) * 10][] = $p; ksort($porCx); ?>
+      <details class="conteudo-cx" style="padding: 0 1rem .8rem">
+        <summary>Ver o que tem em cada caixa</summary>
+        <?php foreach ($porCx as $cx => $its): ?>
+          <div class="cx-linha"><b class="cxn">Caixa <?= $cx ?></b> <small><?= array_sum(array_column($its, 'pacotes')) ?> pct</small><br>
+            <?php foreach ($its as $p): ?><span class="it"><b><?= (int)$p['entrega'] ?></b> <?= e($p['endereco']) ?>, <?= e($p['numero_casa']) ?><?= $p['pacotes'] > 1 ? ' <small>(' . (int)$p['pacotes'] . ' pct)</small>' : '' ?></span><br><?php endforeach; ?>
+          </div>
+        <?php endforeach; ?>
+      </details>
       <?php if ($fase === 'coleta'): ?>
       <div class="sair-cd">
         <button class="btn primario grande largo" onclick="sairCd()">Sair para as entregas</button>

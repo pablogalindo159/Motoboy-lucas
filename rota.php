@@ -156,7 +156,7 @@ topo('Rota ' . $rota['motoboy'], 'rotas', true);
   </form>
 </div>
 
-<link rel="stylesheet" href="assets/sacas.css?v=18">
+<link rel="stylesheet" href="assets/sacas.css?v=19">
 <?php foreach ($socorros as $x): ?>
   <div class="aviso ambul">
     <b>🚑 Ambulância</b> · <?= e($x['de_nome']) ?> → <b><?= e($x['para_nome']) ?></b>:
@@ -207,6 +207,15 @@ topo('Rota ' . $rota['motoboy'], 'rotas', true);
   <div class="chips">
     <?php foreach ($sacas as $sc): ?><span class="chip <?= $sc['coletada'] ? 'ok' : '' ?>" title="<?= $sc['coletada'] ? 'Coletada às ' . hora_br($sc['coletada_em']) : 'Aguardando coleta' ?>"><b><?= (int)$sc['caixa'] ?></b> <?= (int)$sc['quantidade'] ?></span><?php endforeach; ?>
   </div>
+  <?php $porCx = []; foreach ($paradas as $p) if ($p['entrega'] !== null && !$p['socorro_id']) $porCx[intdiv((int)$p['entrega'], 10) * 10][] = $p; ksort($porCx); ?>
+  <details class="conteudo-cx" style="padding: 0 .9rem .6rem">
+    <summary>Ver o que tem em cada caixa</summary>
+    <?php foreach ($porCx as $cx => $its): ?>
+      <div class="cx-linha"><b class="cxn">Caixa <?= $cx ?></b>
+        <?php foreach ($its as $p): ?><span class="it"><b><?= (int)$p['entrega'] ?></b> <?= e($p['endereco']) ?>, <?= e($p['numero_casa']) ?> <small>(<?= (int)$p['pacotes'] ?> pct)</small></span><?php endforeach; ?>
+      </div>
+    <?php endforeach; ?>
+  </details>
 </div>
 <?php endif; ?>
 

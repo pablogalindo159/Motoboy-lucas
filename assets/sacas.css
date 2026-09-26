@@ -217,3 +217,35 @@ tr.achada td { background: #EEFBD9; }
 .fora-quad label.aceitar { display: flex; gap: .4rem; align-items: center; cursor: pointer; white-space: nowrap; }
 .fora-quad label.aceitar input { width: auto; accent-color: #000; }
 .aviso.ok.fora-quad { border-left-color: var(--verde); }
+
+/* caixas do dia */
+.filtro-caixas { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; }
+.filtro-caixas input { max-width: 260px; }
+.filtro-caixas select { width: auto; }
+.grade-caixas { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: .8rem; align-items: start; }
+.cx { background: var(--papel); border: 1px solid var(--linha); border-radius: var(--raio); overflow: hidden; break-inside: avoid; }
+.cx header { display: flex; justify-content: space-between; align-items: baseline; background: #000; color: #fff; padding: .5rem .8rem; }
+.cx-num { font-family: var(--fonte-placa); font-weight: 800; font-size: 1.35rem; color: var(--marca); }
+.cx-pac { font-weight: 600; }
+.cx-motos { display: flex; flex-wrap: wrap; gap: .3rem .8rem; padding: .45rem .8rem; font-size: .88rem; font-weight: 600; border-bottom: 1px solid var(--linha); }
+.cx ol { list-style: none; margin: 0; padding: .3rem .8rem .6rem; font-size: .9rem; }
+.cx li { display: grid; grid-template-columns: 2.6rem 1fr auto auto; gap: .5rem; align-items: center; padding: .25rem 0; border-bottom: 1px dashed #E3E8E7; }
+.cx li:last-child { border-bottom: 0; }
+.cx li b { font-family: var(--fonte-placa); font-size: 1.05rem; }
+.cx-end { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cx-q { color: var(--suave); font-size: .82rem; }
+.cx li.achada { background: #EEFBD9; }
+.cx li.apagada { opacity: .3; }
+/* conteúdo das caixas (rota e celular) */
+.conteudo-cx { margin-top: .6rem; }
+.conteudo-cx summary { cursor: pointer; font-weight: 600; padding: .3rem 0; }
+.conteudo-cx .cx-linha { padding: .45rem 0; border-top: 1px solid var(--linha); font-size: .9rem; }
+.conteudo-cx .cx-linha b.cxn { font-family: var(--fonte-placa); font-size: 1.05rem; margin-right: .3rem; }
+.conteudo-cx .cx-linha span.it { display: inline-block; margin: .15rem .5rem .15rem 0; }
+@media print {
+  .grade-caixas { display: block; column-count: 2; column-gap: .8rem; }
+  .cx { margin-bottom: .6rem; border-color: #999; }
+  .cx header { background: #fff; color: #000; border-bottom: 2px solid #000; }
+  .cx-num { color: #000; }
+  .cx[hidden] { display: none; }
+}
