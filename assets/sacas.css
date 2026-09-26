@@ -116,3 +116,11 @@
 .limites .mais { color: var(--verde); font-weight: 600; }
 .limites .menos { color: var(--suave); }
 .rodape-previa { flex-wrap: wrap; }
+
+/* aviso de quadrante acima do máximo */
+.acima-max { margin-bottom: 1rem; }
+.acima-max.pendente { border-left-color: var(--vermelho); background: #FBE4E1; }
+.acima-max .decisao { margin-top: .8rem; padding-top: .7rem; border-top: 1px solid rgba(0,0,0,.1); }
+.acima-max .decisao p { margin: 0 0 .4rem; }
+.acima-max label { display: flex; gap: .5rem; align-items: flex-start; padding: .35rem 0; cursor: pointer; }
+.acima-max input[type=radio] { width: auto; margin-top: .2rem; accent-color: #000; }

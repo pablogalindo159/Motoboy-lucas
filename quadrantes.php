@@ -83,7 +83,7 @@ topo('Quadrantes', 'rotas', true);
 ?>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
-<link rel="stylesheet" href="assets/sacas.css?v=10">
+<link rel="stylesheet" href="assets/sacas.css?v=11">
 <a href="rotas.php" class="voltar">← Rotas</a>
 <h1>Quadrantes</h1>
 <div class="duas-colunas quadrantes">

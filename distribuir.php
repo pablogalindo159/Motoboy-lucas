@@ -30,9 +30,25 @@ foreach (array_keys($pm) as $mid) {
     $lim[$mid] = ['min' => $val('min', $padroes[$mid]['pacotes_min'] ?? null), 'max' => $val('max', $padroes[$mid]['pacotes_max'] ?? null)];
 }
 $equilibrar = !isset($_REQUEST['equilibrar']) || $_REQUEST['equilibrar'] === '1';
-$eq = $equilibrar ? equilibrar_pacotes($pm, $lim) : ['movidas' => [], 'recebeu' => [], 'cedeu' => []];
 
-if (($_POST['acao'] ?? '') === 'confirmar' && csrf_ok()) {
+// quadrantes que passam do máximo: pergunta se fica tudo com o motoboy ou se o excesso vai para outro
+$acimaMax = [];
+foreach ($pm as $mid => $m) if ($lim[$mid]['max'] !== null && $m['pac_quadrante'] > $lim[$mid]['max']) $acimaMax[$mid] = $m['pac_quadrante'] - $lim[$mid]['max'];
+$decisao = [];
+foreach ($acimaMax as $mid => $x) {
+    $d = $_REQUEST['excesso'][$mid] ?? '';
+    $decisao[$mid] = in_array($d, ['manter', 'passar'], true) ? $d : '';
+}
+$pendentes = array_keys(array_filter($decisao, fn($d) => $d === ''));
+// "manter": fica exatamente com tudo do quadrante (não cede nem recebe); sem resposta, a prévia mostra o excesso sendo passado
+$limEq = $lim;
+foreach ($decisao as $mid => $d) if ($d === 'manter') $limEq[$mid]['min'] = $limEq[$mid]['max'] = $pm[$mid]['pac_quadrante'];
+$eq = $equilibrar ? equilibrar_pacotes($pm, $limEq) : ['movidas' => [], 'recebeu' => [], 'cedeu' => []];
+$erroDecisao = false;
+
+if (($_POST['acao'] ?? '') === 'confirmar' && csrf_ok() && $equilibrar && $pendentes) {
+    $erroDecisao = true; // não cria: falta responder o que fazer com quem passou do máximo
+} elseif (($_POST['acao'] ?? '') === 'confirmar' && csrf_ok()) {
     if (!$pm) { flash('Escolha pelo menos um motoboy.', 'erro'); redirecionar("distribuir.php?data=$data&modo=$modo"); }
     // quadrante: guarda o motoboy escolhido como padrão para os próximos dias
     if ($modo === 'quadrantes' && !empty($_POST['lembrar'])) {
@@ -62,7 +78,7 @@ $iniciadas = (int)$s->fetchColumn();
 
 topo('Distribuir entregas', 'rotas', true);
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=10">
+<link rel="stylesheet" href="assets/sacas.css?v=11">
 <a href="rotas.php?data=<?= e($data) ?>" class="voltar">← Rotas</a>
 <h1>Distribuir entregas de <?= data_br($data) ?></h1>
 
@@ -101,6 +117,23 @@ topo('Distribuir entregas', 'rotas', true);
     <?= csrf_field() ?>
     <input type="hidden" name="data" value="<?= e($data) ?>"><input type="hidden" name="modo" value="<?= e($modo) ?>">
     <?php foreach ($escolhidos as $id): ?><input type="hidden" name="moto[]" value="<?= $id ?>"><?php endforeach; ?>
+    <?php if ($acimaMax && $equilibrar): ?>
+    <div class="aviso alerta acima-max<?= $erroDecisao ? ' pendente' : '' ?>" id="acima-max">
+      <b>⚠ Quadrante acima do máximo</b>
+      <?php if ($erroDecisao): ?><p class="txt-alerta">Responda abaixo antes de criar as rotas.</p><?php endif; ?>
+      <?php foreach ($acimaMax as $mid => $excesso): $m = $pm[$mid]; $nome = $nomeMoto[$mid] ?? '?'; ?>
+        <div class="decisao">
+          <p><span class="bolinha" style="background:<?= e($m['cor']) ?>"></span><b><?= e($nome) ?></b> · <?= e(implode(' + ', $m['nomes'])) ?>:
+             <b><?= (int)$m['pac_quadrante'] ?></b> pacotes, máximo <b><?= (int)$lim[$mid]['max'] ?></b> (<b>+<?= (int)$excesso ?></b>)</p>
+          <label><input type="radio" name="excesso[<?= $mid ?>]" value="manter" <?= $decisao[$mid] === 'manter' ? 'checked' : '' ?> onchange="this.form.querySelector('[value=previa]').click()">
+            Adicionar mesmo assim para <?= e($nome) ?> (fica com <?= (int)$m['pac_quadrante'] ?>)</label>
+          <label><input type="radio" name="excesso[<?= $mid ?>]" value="passar" <?= $decisao[$mid] === 'passar' ? 'checked' : '' ?> onchange="this.form.querySelector('[value=previa]').click()">
+            Passar os <?= (int)$excesso ?> pacotes a mais para o próximo motoboy</label>
+        </div>
+      <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
+
     <div class="lista-grupos">
     <?php foreach ($grupos as $g):
         $pac = array_sum(array_column($g['entregas'], 'pacotes'));
@@ -137,7 +170,8 @@ topo('Distribuir entregas', 'rotas', true);
               $final = array_sum(array_column($m['entregas'], 'pacotes'));
               $l = $lim[$mid];
               $abaixo = $l['min'] !== null && $final < $l['min'];
-              $acima = $l['max'] !== null && $final > $l['max']; ?>
+              $acima = $l['max'] !== null && $final > $l['max'] && ($decisao[$mid] ?? '') !== 'manter';
+              $mantido = ($decisao[$mid] ?? '') === 'manter'; ?>
             <tr>
               <td><span class="bolinha" style="background:<?= e($m['cor']) ?>"></span><b><?= e($nomeMoto[$mid] ?? '?') ?></b><br><small><?= e(implode(' + ', $m['nomes'])) ?></small></td>
               <td><?= (int)$m['pac_quadrante'] ?></td>
@@ -147,7 +181,10 @@ topo('Distribuir entregas', 'rotas', true);
                 <b class="<?= $abaixo || $acima ? 'txt-alerta' : '' ?>"><?= $final ?></b> pacotes
                 <?php if (!empty($eq['recebeu'][$mid])): ?><br><small class="mais">+<?= (int)$eq['recebeu'][$mid] ?> de <?= e(implode(', ', array_map(fn($de, $q) => ($nomeMoto[$de] ?? '?') . " ($q)", array_keys($origem[$mid]), $origem[$mid]))) ?></small><?php endif; ?>
                 <?php if (!empty($eq['cedeu'][$mid])): ?><br><small class="menos">−<?= (int)$eq['cedeu'][$mid] ?> para outros</small><?php endif; ?>
-                <?php if ($abaixo): ?><br><small class="txt-alerta">Não deu para chegar ao mínimo</small><?php elseif ($acima): ?><br><small class="txt-alerta">Ninguém com espaço para receber o excesso</small><?php endif; ?>
+                <?php if ($mantido): ?><br><small class="txt-alerta">Acima do máximo: você escolheu manter</small>
+                <?php elseif (isset($acimaMax[$mid]) && $decisao[$mid] === '' && $equilibrar): ?><br><small class="txt-alerta">Acima do máximo: falta decidir (aviso no topo)</small>
+                <?php elseif ($abaixo): ?><br><small class="txt-alerta">Não deu para chegar ao mínimo</small>
+                <?php elseif ($acima): ?><br><small class="txt-alerta">Ninguém com espaço para receber o excesso</small><?php endif; ?>
               </td>
             </tr>
           <?php endforeach; ?>
@@ -162,7 +199,8 @@ topo('Distribuir entregas', 'rotas', true);
 
     <div class="rodape-previa">
       <button class="btn grande" name="acao" value="previa">Recalcular</button>
-      <button class="btn primario grande" name="acao" value="confirmar">Criar rotas</button>
+      <button class="btn primario grande" name="acao" value="confirmar" <?= $pendentes && $equilibrar ? 'disabled title="Responda o aviso de quadrante acima do máximo"' : '' ?>>Criar rotas</button>
+      <?php if ($pendentes && $equilibrar): ?><small class="txt-alerta">Responda o aviso de quadrante acima do máximo para liberar.</small><?php endif; ?>
     </div>
     <p class="dica">Cada motoboy entrega na ordem do número da lista. Um motoboy pode ficar com mais de um quadrante: vira uma rota só. As caixas de cada um saem das entregas dele.</p>
   </form>
