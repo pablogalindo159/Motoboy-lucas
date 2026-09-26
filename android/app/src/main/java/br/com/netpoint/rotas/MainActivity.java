@@ -22,6 +22,8 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
+import com.google.firebase.messaging.FirebaseMessaging;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -34,6 +36,7 @@ public class MainActivity extends Activity {
     private String geoOrigem;
     private Intent rastreioPendente;
     private PermissionRequest cameraPendente;
+    private volatile String tokenFcm;
 
     @Override
     protected void onCreate(Bundle salvo) {
@@ -63,6 +66,11 @@ public class MainActivity extends Activity {
                 if (doServidor(u)) return false;
                 abrirFora(u); // Google Maps, Waze, WhatsApp...
                 return true;
+            }
+
+            @Override
+            public void onPageFinished(WebView v, String url) {
+                registrarTokenNaPagina();
             }
 
             @Override
@@ -105,6 +113,8 @@ public class MainActivity extends Activity {
             }
         });
 
+        NetPointService.criarCanais(this);
+        pegarTokenFirebase();
         pedirPermissoes();
         if (salvo != null) web.restoreState(salvo);
         else if (getIntent() != null && getIntent().getStringExtra("link") != null) abrirLinkDoAviso(getIntent());
@@ -180,6 +190,27 @@ public class MainActivity extends Activity {
         }
     }
 
+    // ---------- Firebase ----------
+    private void pegarTokenFirebase() {
+        try {
+            FirebaseMessaging.getInstance().getToken().addOnCompleteListener(t -> {
+                if (t.isSuccessful() && t.getResult() != null) {
+                    tokenFcm = t.getResult();
+                    getSharedPreferences("netpoint", MODE_PRIVATE).edit().putString("fcm_token", tokenFcm).putBoolean("fcm_ativo", true).apply();
+                    runOnUiThread(this::registrarTokenNaPagina);
+                }
+            });
+        } catch (Exception e) {
+            // app gerado sem o google-services.json: segue com o aviso a cada ~45 s
+            getSharedPreferences("netpoint", MODE_PRIVATE).edit().putBoolean("fcm_ativo", false).apply();
+        }
+    }
+
+    private void registrarTokenNaPagina() {
+        if (tokenFcm == null || web == null) return;
+        web.evaluateJavascript("window.registrarTokenFcm && window.registrarTokenFcm(" + org.json.JSONObject.quote(tokenFcm) + ")", null);
+    }
+
     // toque numa notificação de aviso: abre a página do aviso
     private void abrirLinkDoAviso(Intent intent) {
         String link = intent != null ? intent.getStringExtra("link") : null;
@@ -238,6 +269,12 @@ public class MainActivity extends Activity {
         public void desligarAvisos() {
             runOnUiThread(() -> NetPointService.comando(MainActivity.this, "parar", null, null, 0));
         }
+
+        @JavascriptInterface
+        public boolean temFcm() { return tokenFcm != null; }
+
+        @JavascriptInterface
+        public String tokenFcm() { return tokenFcm != null ? tokenFcm : ""; }
 
         @JavascriptInterface
         public boolean rastreando() {

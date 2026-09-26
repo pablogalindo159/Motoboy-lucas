@@ -1111,6 +1111,9 @@ function avisar(string $paraTipo, ?int $paraId, string $tipo, string $titulo, ?s
     try {
         db()->prepare("INSERT INTO avisos (para_tipo, para_id, tipo, titulo, texto, link, prioridade) VALUES (?,?,?,?,?,?,?)")
             ->execute([$paraTipo, $paraId, $tipo, mb_substr($titulo, 0, 150), $texto !== null ? mb_substr($texto, 0, 500) : null, $link, $prioridade]);
+        $id = (int)db()->lastInsertId();
+        // Firebase: notificação instantânea no celular (se configurado)
+        if (function_exists('fcm_enviar')) fcm_enviar($paraTipo, $paraId, ['id' => $id, 'tipo' => $tipo, 'titulo' => $titulo, 'texto' => $texto, 'link' => $link, 'prioridade' => $prioridade]);
     } catch (Throwable $ex) { /* aviso nunca pode quebrar a ação principal */ }
 }
 
@@ -1141,4 +1144,88 @@ function versao_motoboy(int $uid): string {
         (SELECT GROUP_CONCAT(CONCAT(ps.id, ps.status)) FROM pedidos_socorro ps WHERE ps.motoboy_id = ? AND DATE(ps.criado_em) = ?))");
     $s->execute([$uid, $hoje, $uid, $uid, $hoje, $uid, $hoje]);
     return md5((string)$s->fetchColumn());
+}
+
+// =====================================================================
+// Firebase Cloud Messaging (notificação instantânea no celular)
+// =====================================================================
+function garantir_schema_v13(): void {
+    $flag = __DIR__ . '/.schema_v13';
+    if (file_exists($flag)) return;
+    db()->exec("CREATE TABLE IF NOT EXISTS dispositivos (
+        token VARCHAR(255) PRIMARY KEY,
+        usuario_id INT NOT NULL,
+        atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX (usuario_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    @touch($flag);
+}
+garantir_schema_v13();
+
+function _b64url(string $s): string { return rtrim(strtr(base64_encode($s), '+/', '-_'), '='); }
+
+function http_post(string $url, string $corpo, array $headers): array {
+    $ctx = stream_context_create(['http' => ['method' => 'POST', 'header' => implode("\r\n", $headers), 'content' => $corpo, 'timeout' => 8, 'ignore_errors' => true]]);
+    $r = @file_get_contents($url, false, $ctx);
+    $codigo = 0;
+    foreach ($http_response_header ?? [] as $h) if (preg_match('#^HTTP/\S+ (\d{3})#', $h, $m)) $codigo = (int)$m[1];
+    return [$codigo, $r === false ? '' : $r];
+}
+
+/** Conta de serviço do Firebase (JSON colado nas configurações). */
+function fcm_conta(): ?array {
+    $c = json_decode((string)cfg('fcm_conta', ''), true);
+    return is_array($c) && !empty($c['client_email']) && !empty($c['private_key']) && !empty($c['project_id']) ? $c : null;
+}
+
+/** Token de acesso do Google (vale 1 hora; fica guardado). */
+function fcm_token_acesso(): ?string {
+    $conta = fcm_conta();
+    if (!$conta) return null;
+    $cache = json_decode((string)cfg('fcm_acesso', ''), true);
+    if (is_array($cache) && ($cache['exp'] ?? 0) > time() + 120) return $cache['token'];
+    $agora = time();
+    $aud = $conta['token_uri'] ?? 'https://oauth2.googleapis.com/token';
+    $jwt = _b64url(json_encode(['alg' => 'RS256', 'typ' => 'JWT'])) . '.' . _b64url(json_encode([
+        'iss' => $conta['client_email'], 'scope' => 'https://www.googleapis.com/auth/firebase.messaging',
+        'aud' => $aud, 'iat' => $agora, 'exp' => $agora + 3600]));
+    if (!openssl_sign($jwt, $assinatura, $conta['private_key'], 'sha256WithRSAEncryption')) return null;
+    $jwt .= '.' . _b64url($assinatura);
+    [$codigo, $resp] = http_post($aud, http_build_query(['grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer', 'assertion' => $jwt]),
+                                 ['Content-Type: application/x-www-form-urlencoded']);
+    $j = json_decode($resp, true);
+    if ($codigo !== 200 || empty($j['access_token'])) return null;
+    cfg_salvar('fcm_acesso', json_encode(['token' => $j['access_token'], 'exp' => $agora + (int)($j['expires_in'] ?? 3600)]));
+    return $j['access_token'];
+}
+
+/** Envia o aviso para os celulares do usuário (ou de todos os admins). Retorna quantos receberam. */
+function fcm_enviar(string $paraTipo, ?int $paraId, array $aviso): int {
+    $conta = fcm_conta();
+    if (!$conta) return 0;
+    $sql = "SELECT d.token FROM dispositivos d JOIN usuarios u ON u.id = d.usuario_id WHERE u.ativo = 1 AND u.tipo = ?";
+    $par = [$paraTipo];
+    if ($paraId !== null) { $sql .= " AND u.id = ?"; $par[] = $paraId; }
+    $s = db()->prepare($sql); $s->execute($par);
+    $tokens = $s->fetchAll(PDO::FETCH_COLUMN);
+    if (!$tokens) return 0;
+    $acesso = fcm_token_acesso();
+    if (!$acesso) return 0;
+    $ok = 0;
+    foreach ($tokens as $t) {
+        $msg = ['message' => [
+            'token' => $t,
+            'notification' => ['title' => $aviso['titulo'], 'body' => (string)($aviso['texto'] ?? '')],
+            'data' => ['id' => (string)($aviso['id'] ?? ''), 'tipo' => (string)$aviso['tipo'], 'link' => (string)($aviso['link'] ?? ''),
+                       'titulo' => $aviso['titulo'], 'texto' => (string)($aviso['texto'] ?? ''), 'prioridade' => (string)($aviso['prioridade'] ?? 'normal')],
+            'android' => ['priority' => 'HIGH', 'notification' => ['channel_id' => 'avisos', 'sound' => 'default']],
+        ]];
+        [$codigo, $resp] = http_post('https://fcm.googleapis.com/v1/projects/' . rawurlencode($conta['project_id']) . '/messages:send',
+                                     json_encode($msg, JSON_UNESCAPED_UNICODE), ['Content-Type: application/json', 'Authorization: Bearer ' . $acesso]);
+        if ($codigo === 200) $ok++;
+        elseif ($codigo === 404 || str_contains($resp, 'UNREGISTERED') || str_contains($resp, 'INVALID_ARGUMENT')) {
+            db()->prepare("DELETE FROM dispositivos WHERE token = ?")->execute([$t]); // app desinstalado / token velho
+        } elseif ($codigo === 401) cfg_salvar('fcm_acesso', null);
+    }
+    return $ok;
 }

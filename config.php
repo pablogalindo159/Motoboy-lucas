@@ -188,6 +188,9 @@ function topo(string $titulo, string $ativo = '', bool $mapa = false): void {
     } catch (e) {}
   }
   marcaSino(); conferir(); setInterval(conferir, 15000);
+  // admin abrindo o painel pelo app: registra o celular para receber os alertas (socorro, recusa…)
+  window.registrarTokenFcm = token => { const fd = new FormData(); fd.append('acao', 'registrar_token'); fd.append('token', token); fetch('api.php', { method: 'POST', body: fd, headers: { 'X-CSRF': CSRF_ADM } }).catch(() => {}); };
+  if (window.NetPointApp && NetPointApp.temFcm && NetPointApp.temFcm()) registrarTokenFcm(NetPointApp.tokenFcm());
 })();
 </script>
 <?php endif; ?>

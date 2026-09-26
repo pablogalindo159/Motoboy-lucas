@@ -221,6 +221,16 @@ case 'cancelar_pedido_socorro':
     avisar('admin', null, 'pedido_socorro', '✅ ' . $u['nome'] . ' cancelou o pedido de socorro', 'Resolveu sozinho.', 'admin.php');
     responder(['ok' => true]);
 
+// ---------- celular registra o token do Firebase (para receber notificação instantânea) ----------
+case 'registrar_token':
+    $u = usuario();
+    if (!$u) { http_response_code(401); echo json_encode(['erro' => 'Entre de novo.']); exit; }
+    $t = trim($_POST['token'] ?? '');
+    if (strlen($t) < 20 || strlen($t) > 255) responder(['erro' => 'Token inválido'], 422);
+    db()->prepare("REPLACE INTO dispositivos (token, usuario_id) VALUES (?, ?)")->execute([$t, $u['id']]);
+    $_SESSION['fcm_token'] = $t;
+    responder(['ok' => true, 'firebase' => fcm_conta() !== null]);
+
 // ---------- avisos (motoboy e admin): novos desde o último que o aparelho já viu ----------
 case 'avisos':
     $u = usuario();

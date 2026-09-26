@@ -21,6 +21,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
         cfg_salvar('carto_key', preg_match('/^[A-Za-z0-9_\-]{8,120}$/', $k) ? $k : null);
         flash($k === '' ? 'Chave do mapa da TV removida.' : (cfg('carto_key') ? 'Chave do mapa da TV salva.' : 'Chave inválida.'), cfg('carto_key') || $k === '' ? 'ok' : 'erro');
     }
+    if ($acao === 'firebase') {
+        $txt = trim($_POST['fcm_json'] ?? '');
+        if (!empty($_FILES['fcm_arquivo']['tmp_name']) && is_uploaded_file($_FILES['fcm_arquivo']['tmp_name'])) $txt = file_get_contents($_FILES['fcm_arquivo']['tmp_name']);
+        $j = json_decode($txt, true);
+        if (!is_array($j) || ($j['type'] ?? '') !== 'service_account' || empty($j['private_key']) || empty($j['project_id'])) {
+            flash('Arquivo inválido. Use a "chave da conta de serviço" (.json) do Firebase: Configurações do projeto → Contas de serviço → Gerar nova chave privada.', 'erro');
+        } else {
+            cfg_salvar('fcm_conta', json_encode($j));
+            cfg_salvar('fcm_acesso', null);
+            flash(fcm_token_acesso() ? 'Firebase ligado: projeto ' . $j['project_id'] . '.' : 'Chave salva, mas o Google não aceitou. Confira se a API "Firebase Cloud Messaging" está ativa no projeto.', fcm_token_acesso() ? 'ok' : 'alerta');
+        }
+    }
+    if ($acao === 'firebase_remover') { cfg_salvar('fcm_conta', null); cfg_salvar('fcm_acesso', null); flash('Firebase desligado.'); }
+    if ($acao === 'firebase_teste') {
+        $mid = (int)($_POST['motoboy_id'] ?? 0);
+        $n = fcm_enviar('motoboy', $mid, ['id' => 0, 'tipo' => 'teste', 'titulo' => '🔔 Teste do NetPoint Rotas', 'texto' => 'Se você está vendo isto, as notificações estão funcionando.', 'link' => 'motoboy.php', 'prioridade' => 'alta']);
+        flash($n ? "Teste enviado para $n celular(es)." : 'Nenhum celular recebeu. O motoboy precisa abrir o app novo (1.0.4) uma vez, logado.', $n ? 'ok' : 'alerta');
+    }
     if ($acao === 'google') {
         cfg_salvar('google_key', trim($_POST['google_key'] ?? '') ?: null);
         flash('Chave salva.');
@@ -46,6 +64,29 @@ topo('Centro de distribuição', 'rotas', true);
       <label>Chave da Geocoding API<input name="google_key" value="<?= e(cfg('google_key', '')) ?>" autocomplete="off"></label>
       <button class="btn">Salvar chave</button>
     </form>
+    <?php $conta = fcm_conta();
+          $nDisp = (int)db()->query("SELECT COUNT(DISTINCT usuario_id) FROM dispositivos")->fetchColumn();
+          $motosCel = db()->query("SELECT DISTINCT u.id, u.nome FROM dispositivos d JOIN usuarios u ON u.id = d.usuario_id WHERE u.tipo = 'motoboy' ORDER BY u.nome")->fetchAll(); ?>
+    <form method="post" enctype="multipart/form-data" class="form cartao" style="margin-top:1rem">
+      <?= csrf_field() ?><input type="hidden" name="acao" value="firebase">
+      <p><b>Notificações pelo Firebase</b> <?= $conta ? '<span class="selo finalizada">ligado · ' . e($conta['project_id']) . '</span>' : '<span class="selo">desligado</span>' ?><br>
+        Com o Firebase, o aviso chega na hora no celular, mesmo bloqueado. Sem ele, o app confere a cada ~45 s.
+        <?= $nDisp ? "<br>$nDisp celular(es) já registrados." : '' ?></p>
+      <label>Chave da conta de serviço (.json)<input type="file" name="fcm_arquivo" accept=".json,application/json"></label>
+      <details><summary>ou colar o conteúdo</summary><textarea name="fcm_json" rows="4" placeholder='{"type": "service_account", ...}'></textarea></details>
+      <button class="btn"><?= $conta ? 'Trocar chave' : 'Ligar Firebase' ?></button>
+    </form>
+    <?php if ($conta): ?>
+    <form method="post" class="form cartao" style="margin-top:.5rem">
+      <?= csrf_field() ?>
+      <label>Enviar notificação de teste para
+        <select name="motoboy_id"><?php foreach ($motosCel as $m): ?><option value="<?= $m['id'] ?>"><?= e($m['nome']) ?></option><?php endforeach; ?></select></label>
+      <div class="acoes" style="justify-content:flex-start">
+        <button class="btn" name="acao" value="firebase_teste" <?= $motosCel ? '' : 'disabled' ?>>Enviar teste</button>
+        <button class="btn perigo" name="acao" value="firebase_remover" onclick="return confirm('Desligar o Firebase?')">Desligar Firebase</button>
+      </div>
+    </form>
+    <?php endif; ?>
     <form method="post" class="form cartao" style="margin-top:1rem">
       <?= csrf_field() ?><input type="hidden" name="acao" value="carto">
       <p><b>Mapa escuro da TV (CARTO)</b><br>Sem a chave, a TV usa o mapa comum escurecido. Chave grátis em carto.com/basemaps/apikey.</p>

@@ -3,3 +3,4 @@
 .schema_*
 config.local.php
 dados/
+android/app/google-services.json

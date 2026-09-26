@@ -33,6 +33,12 @@ jobs:
             echo "KEYSTORE_PATH=$RUNNER_TEMP/netpoint.jks" >> "$GITHUB_ENV"
           fi
 
+      - name: Firebase (google-services.json)
+        env:
+          GS_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GS_JSON" ]; then printf '%s' "$GS_JSON" > android/app/google-services.json; echo "Firebase ligado"; else echo "Sem Firebase (app usa o aviso a cada 45 s)"; fi
+
       - name: Compilar
         working-directory: android
         env:

@@ -579,8 +579,7 @@ async function conferirAvisos() {
 }
 setInterval(conferirAvisos, 15000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') conferirAvisos(); });
-// no app Android: liga as notificações do celular (funcionam com o app fechado)
-if (window.NetPointApp && NetPointApp.ligarAvisos) NetPointApp.ligarAvisos(new URL('api.php', location.href).href, ultimoAviso);
+
 
 // ---- Ambulância ----
 async function socorroColetado(id) {
@@ -640,6 +639,14 @@ if (APP) {
     gpsEl.textContent = err.code === 1 ? 'GPS bloqueado: libere a localização para este site' : 'Procurando sinal de GPS…';
     gpsEl.className = 'gps off';
   }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 });
+}
+
+// no app Android: Firebase (instantâneo) quando disponível; senão o serviço que confere a cada ~45 s
+window.registrarTokenFcm = token => post({ acao: 'registrar_token', token }).catch(() => {});
+if (window.NetPointApp) {
+  const temFcm = NetPointApp.temFcm && NetPointApp.temFcm();
+  if (temFcm) { registrarTokenFcm(NetPointApp.tokenFcm()); if (NetPointApp.desligarAvisos && !EM_ROTA) NetPointApp.desligarAvisos(); }
+  else if (NetPointApp.ligarAvisos) NetPointApp.ligarAvisos(new URL('api.php', location.href).href, ultimoAviso);
 }
 
 // Mantém a tela acesa enquanto a página está aberta (para o GPS continuar enviando)

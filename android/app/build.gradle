@@ -1,6 +1,10 @@
 plugins {
     id 'com.android.application'
 }
+// Firebase: só liga se o google-services.json estiver presente (vem de um segredo do GitHub)
+if (file('google-services.json').exists()) {
+    apply plugin: 'com.google.gms.google-services'
+}
 
 def numero = (System.getenv('GITHUB_RUN_NUMBER') ?: '1') as Integer
 def temChave = System.getenv('KEYSTORE_PATH') != null
@@ -39,4 +43,9 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+}
+
+dependencies {
+    implementation platform('com.google.firebase:firebase-bom:33.4.0')
+    implementation 'com.google.firebase:firebase-messaging'
 }

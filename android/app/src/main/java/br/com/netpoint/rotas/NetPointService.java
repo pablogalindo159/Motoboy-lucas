@@ -104,9 +104,12 @@ public class NetPointService extends Service implements LocationListener {
     }
 
     // ---------- notificação fixa ----------
-    private void criarCanais() {
+    private void criarCanais() { criarCanais(this); }
+
+    /** Canais de notificação (também usados pelo Firebase). */
+    static void criarCanais(Context ctx) {
         if (Build.VERSION.SDK_INT < 26) return;
-        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        NotificationManager nm = (NotificationManager) ctx.getSystemService(NOTIFICATION_SERVICE);
         if (nm.getNotificationChannel(CANAL_SERVICO) == null) {
             NotificationChannel c = new NotificationChannel(CANAL_SERVICO, "NetPoint conectado", NotificationManager.IMPORTANCE_MIN);
             c.setDescription("Mantém o app recebendo avisos e enviando a localização durante a rota");
@@ -153,6 +156,7 @@ public class NetPointService extends Service implements LocationListener {
     // ---------- avisos ----------
     private void conferirAvisos() {
         if (api == null) return;
+        if (prefs.getBoolean("fcm_ativo", false)) return; // o Firebase já entrega os avisos na hora
         HttpURLConnection c = null;
         try {
             String url = api + (api.contains("?") ? "&" : "?") + "acao=avisos&desde=" + ultimoAviso;
