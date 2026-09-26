@@ -9,6 +9,9 @@ $linkTv = str_replace('//tv.php', '/tv.php', $linkTv);
 $data = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['data'] ?? '') ? $_GET['data'] : date('Y-m-d');
 topo('Painel', 'painel', true);
 ?>
+<link rel="stylesheet" href="assets/mapa.css?v=1">
+<script src="assets/mapa.js?v=1"></script>
+
 <link rel="stylesheet" href="assets/sacas.css?v=23">
 <div class="painel">
   <aside class="lateral">
@@ -37,6 +40,8 @@ topo('Painel', 'painel', true);
 <script>
 const DATA = <?= json_encode($data) ?>;
 const mapa = L.map('mapa', { preferCanvas: true }).setView([<?= MAPA_LAT ?>, <?= MAPA_LNG ?>], 13);
+NP.prepararMapa(mapa);
+NP.quadrantes(mapa, <?= json_encode(array_map(fn($q) => ['nome' => $q['nome'], 'cor' => $q['cor'], 'pontos' => $q['pontos']], quadrantes_ativos()), JSON_UNESCAPED_UNICODE) ?>);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapa);
 
 const camadas = L.layerGroup().addTo(mapa);
@@ -96,11 +101,9 @@ async function carregar() {
     m.paradas.forEach(p => {
       if (!p.lat) return;
       const ll = [+p.lat, +p.lng]; limites.push(ll);
-      const feito = p.status !== 'pendente', proxima = p === prox;
-      L.circleMarker(ll, { radius: proxima ? 8 : 4.5, weight: proxima ? 3 : 1, color: proxima ? '#000' : 'rgba(0,0,0,.45)',
-        fillColor: feito ? (p.status === 'entregue' ? '#1E7F47' : '#B8352A') : cor, fillOpacity: feito ? .55 : .95 })
+      NP.pino(ll, { num: p.entrega ?? p.numero, cor, status: p.status, destaque: p === prox })
         .addTo(camadas)
-        .bindPopup(`<b>${esc(m.nome)} · parada ${p.numero}</b><br>${esc(p.endereco)}, ${esc(p.numero_casa)}<br>${p.pacotes} pacote(s) — ${p.status === 'pendente' ? 'pendente' : (p.status === 'entregue' ? 'entregue' : 'não entregue')}${p.finalizado_em ? ' às ' + p.finalizado_em.substr(11, 5) : ''}`);
+        .bindPopup(`<b>${esc(m.nome)} · entrega ${p.entrega ?? p.numero}</b> (parada ${p.numero})<br>${esc(p.endereco)}, ${esc(p.numero_casa)}<br>${p.pacotes} pacote(s) — ${p.status === 'pendente' ? 'pendente' : (p.status === 'entregue' ? 'entregue' : 'não entregue')}${p.finalizado_em ? ' às ' + p.finalizado_em.substr(11, 5) : ''}`);
     });
 
     // trajeto e posição

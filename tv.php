@@ -19,6 +19,8 @@ $data = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['data'] ?? '') ? $_GET['data']
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;600&family=Barlow+Semi+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="stylesheet" href="assets/mapa.css?v=1">
+<script src="assets/mapa.js?v=1"></script>
 <style>
   :root { --marca: #8CF20A; --fundo: #000; --painel: #111418; --linha: #262B31; --texto: #F2F4F5; --suave: #8C979E;
           --ok: #2FBF6A; --alerta: #FFC000; --erro: #FF5A4E;
@@ -99,6 +101,8 @@ if (CARTO_KEY) {
   document.getElementById('mapa').classList.add('mapa-escurecido');
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapa);
 }
+NP.prepararMapa(mapa);
+NP.quadrantes(mapa, <?= json_encode(array_map(fn($q) => ['nome' => $q['nome'], 'cor' => $q['cor'], 'pontos' => $q['pontos']], quadrantes_ativos()), JSON_UNESCAPED_UNICODE) ?>, { escuro: true });
 const camadas = L.layerGroup().addTo(mapa);
 const reserva = ['#8CF20A', '#00B0F0', '#FF0066', '#FFC000', '#9B59FF', '#00C49A', '#FF6A00', '#1F5FA8'];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -152,8 +156,7 @@ async function carregar() {
       if (!p.lat) return;
       const ll = [+p.lat, +p.lng]; lim.push(ll);
       const feito = p.status !== 'pendente';
-      L.circleMarker(ll, { radius: p === prox ? 7 : 3.5, weight: p === prox ? 3 : 0, color: '#fff',
-        fillColor: feito ? (p.status === 'entregue' ? '#3a4a3a' : '#5a2a2a') : cor, fillOpacity: feito ? .7 : .95, interactive: false }).addTo(camadas);
+      NP.pino(ll, { num: p.entrega ?? p.numero, cor, status: p.status, destaque: p === prox }).addTo(camadas);
     });
     if (m.trajeto.length > 1) L.polyline(m.trajeto, { color: cor, weight: 3, opacity: .55, interactive: false }).addTo(camadas);
     if (m.lat) {

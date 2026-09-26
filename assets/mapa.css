@@ -1,0 +1,16 @@
+/* bolinhas numeradas das entregas */
+.np-pino { position: absolute; transform: translate(-50%, -50%); min-width: 22px; height: 22px; padding: 0 4px; border-radius: 11px;
+  display: grid; place-items: center; background: var(--c); color: var(--t); border: 1.5px solid rgba(0,0,0,.55);
+  font: 700 11px/1 'Barlow Semi Condensed', 'Arial Narrow', system-ui, sans-serif; box-shadow: 0 1px 3px rgba(0,0,0,.35); white-space: nowrap; }
+.np-pino.feito { opacity: .8; }
+.np-pino.destaque { min-width: 28px; height: 28px; border-radius: 14px; font-size: 13px; border: 3px solid #000; box-shadow: 0 0 0 2px #fff, 0 2px 6px rgba(0,0,0,.5); }
+.np-pino.remanejada { border: 3px solid #fff; box-shadow: 0 0 0 1.5px #000; }
+.np-pino.sem-pos { border-style: dashed; opacity: .75; }
+/* mapa afastado: bolinha pequena, sem número (senão vira um borrão) */
+.np-longe .np-pino { min-width: 9px; width: 9px; height: 9px; padding: 0; font-size: 0; border-width: 1px; }
+.np-longe .np-pino.destaque { width: 14px; min-width: 14px; height: 14px; border-width: 2px; }
+/* nome do quadrante */
+.np-rotulo-quad { background: rgba(255,255,255,.8); border: 0; box-shadow: none; color: #111; font: 700 10.5px system-ui, sans-serif; padding: 1px 5px; pointer-events: none; }
+.np-rotulo-quad::before { display: none; }
+.np-rotulo-quad.escuro { background: rgba(0,0,0,.6); color: #ddd; }
+.np-longe .np-rotulo-quad { font-size: 9.5px; }

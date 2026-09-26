@@ -106,6 +106,9 @@ $iniciadas = (int)$s->fetchColumn();
 topo('Distribuir entregas', 'rotas', true);
 ?>
 <link rel="stylesheet" href="assets/sacas.css?v=23">
+<link rel="stylesheet" href="assets/mapa.css?v=1">
+<script src="assets/mapa.js?v=1"></script>
+
 <a href="rotas.php?data=<?= e($data) ?>" class="voltar">← Rotas</a>
 <h1>Distribuir entregas de <?= data_br($data) ?></h1>
 
@@ -288,14 +291,15 @@ topo('Distribuir entregas', 'rotas', true);
 
 <script>
 const grupos = <?= json_encode(array_values(array_map(fn($mid, $m) => ['nome' => ($nomeMoto[$mid] ?? '?') . ' · ' . implode(' + ', $m['nomes']), 'cor' => $m['cor'], 'pts' => array_values(array_filter(array_map(fn($e) => $e['lat'] ? [(float)$e['lat'], (float)$e['lng'], (int)$e['entrega'], isset($e['movida_de']) ? 1 : 0] : null, $m['entregas'])))], array_keys($pm), $pm))) ?>;
-const quads = <?= json_encode($modo === 'quadrantes' ? array_map(fn($q) => ['nome' => $q['nome'], 'cor' => $q['cor'], 'pontos' => $q['pontos']], quadrantes_ativos()) : []) ?>;
+const quads = <?= json_encode(array_map(fn($q) => ['nome' => $q['nome'], 'cor' => $q['cor'], 'pontos' => $q['pontos']], quadrantes_ativos()), JSON_UNESCAPED_UNICODE) ?>;
 const cd = <?= json_encode(cd_posicao()) ?>;
 const mapa = L.map('mapa', { preferCanvas: true }).setView(cd || [<?= MAPA_LAT ?>, <?= MAPA_LNG ?>], 12);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapa);
 const lim = [];
-quads.forEach(q => L.polygon(q.pontos, { color: q.cor, weight: 2, fillOpacity: .08 }).addTo(mapa).bindTooltip(q.nome));
+NP.prepararMapa(mapa);
+NP.quadrantes(mapa, quads);
 grupos.forEach(g => g.pts.forEach(p => { lim.push([p[0], p[1]]);
-  L.circleMarker([p[0], p[1]], { radius: p[3] ? 7 : 5, color: p[3] ? '#fff' : '#000', weight: p[3] ? 3 : 1, fillColor: g.cor, fillOpacity: .95 }).addTo(mapa).bindTooltip(`${g.nome} · entrega ${p[2]}${p[3] ? ' (remanejada)' : ''}`); }));
+  NP.pino([p[0], p[1]], { num: p[2], cor: g.cor, extra: p[3] ? 'remanejada' : '', titulo: `${g.nome} · entrega ${p[2]}${p[3] ? ' (remanejada)' : ''}` }).addTo(mapa); }));
 if (cd) { L.marker(cd, { icon: L.divIcon({ className: '', html: '<div class="mapa-cd">CD</div>', iconSize: [34, 24], iconAnchor: [17, 12] }) }).addTo(mapa); lim.push(cd); }
 if (lim.length) mapa.fitBounds(lim, { padding: [20, 20] });
 </script>

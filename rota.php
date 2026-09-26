@@ -162,6 +162,9 @@ topo('Rota ' . $rota['motoboy'], 'rotas', true);
 </div>
 
 <link rel="stylesheet" href="assets/sacas.css?v=23">
+<link rel="stylesheet" href="assets/mapa.css?v=1">
+<script src="assets/mapa.js?v=1"></script>
+
 <?php foreach ($socorros as $x): ?>
   <div class="aviso ambul">
     <b>🚑 Ambulância</b> · <?= e($x['de_nome']) ?> → <b><?= e($x['para_nome']) ?></b>:
@@ -296,20 +299,23 @@ topo('Rota ' . $rota['motoboy'], 'rotas', true);
 
 <script>
 const CSRF = <?= json_encode(csrf_token()) ?>;
-const paradas = <?= json_encode(array_map(fn($p) => ['id' => (int)$p['id'], 'numero' => (int)$p['numero'], 'lat' => $p['lat'] ? (float)$p['lat'] : null, 'lng' => $p['lng'] ? (float)$p['lng'] : null, 'status' => $p['status'], 'end' => $p['endereco'] . ', ' . $p['numero_casa']], $paradas)) ?>;
+const paradas = <?= json_encode(array_map(fn($p) => ['id' => (int)$p['id'], 'numero' => (int)$p['numero'], 'entrega' => $p['entrega'] !== null ? (int)$p['entrega'] : null, 'lat' => $p['lat'] ? (float)$p['lat'] : null, 'lng' => $p['lng'] ? (float)$p['lng'] : null, 'status' => $p['status'], 'end' => $p['endereco'] . ', ' . $p['numero_casa']], $paradas)) ?>;
 const mapa = L.map('mapa').setView([<?= MAPA_LAT ?>, <?= MAPA_LNG ?>], 13);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapa);
+NP.prepararMapa(mapa);
+const COR_ROTA = <?= json_encode($rota['cor'] ?: '#8CF20A') ?>;
+NP.quadrantes(mapa, <?= json_encode(array_map(fn($q) => ['nome' => $q['nome'], 'cor' => $q['cor'], 'pontos' => $q['pontos']], quadrantes_ativos()), JSON_UNESCAPED_UNICODE) ?>);
 const pontos = [];
 paradas.forEach(p => {
   const pos = p.lat ? [p.lat, p.lng] : mapa.getCenter();
-  const m = L.marker(pos, { draggable: true, icon: L.divIcon({ className: '', html: `<div class="pino ${p.status}${p.lat ? '' : ' sem-pos'}">${p.numero}</div>`, iconSize: [30, 30], iconAnchor: [15, 15] }) })
-    .addTo(mapa).bindPopup(`<b>Parada ${p.numero}</b><br>${p.end.replace(/</g, '&lt;')}`);
+  const m = NP.pino(pos, { num: p.entrega ?? p.numero, cor: COR_ROTA, status: p.status, arrastar: true, extra: p.lat ? '' : 'sem-pos' })
+    .addTo(mapa).bindPopup(`<b>Entrega ${p.entrega ?? p.numero}</b> (parada ${p.numero})<br>${p.end.replace(/</g, '&lt;')}`);
   if (p.lat) pontos.push(pos);
   m.on('dragend', async () => {
     const ll = m.getLatLng();
     const fd = new FormData(); fd.append('acao', 'mover_parada'); fd.append('id', p.id); fd.append('lat', ll.lat); fd.append('lng', ll.lng);
     const r = await fetch('api.php', { method: 'POST', body: fd, headers: { 'X-CSRF': CSRF } });
-    if (r.ok) m.getElement().querySelector('.pino').classList.remove('sem-pos');
+    if (r.ok) m.getElement().querySelector('.np-pino').classList.remove('sem-pos');
     else alert('Não foi possível salvar a nova posição.');
   });
 });
