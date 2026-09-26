@@ -425,17 +425,13 @@ function montar_por_motoboy(array $grupos): array {
  * 2) Quem ficou abaixo do mínimo recebe as entregas mais perto do seu quadrante principal,
  *    tiradas de quem continua acima do próprio mínimo.
  * $lim[motoboy_id] = ['min' => int|null, 'max' => int|null]. Retorna o resumo das trocas.
- * $tolerancia: quanto o máximo pode passar antes de redistribuir (0.10 = 10%).
  */
-function max_com_tolerancia(?int $max, float $tolerancia): ?int {
-    return $max === null ? null : (int)floor($max * (1 + $tolerancia) + 1e-9);
-}
-function equilibrar_pacotes(array &$pm, array $lim, float $tolerancia = 0.0): array {
+function equilibrar_pacotes(array &$pm, array $lim): array {
     $ids = array_keys($pm);
     $res = ['movidas' => [], 'recebeu' => [], 'cedeu' => []];
     if (count($ids) < 2) return $res;
     $mn = fn($m) => (int)($lim[$m]['min'] ?? 0);
-    $mx = fn($m) => isset($lim[$m]['max']) && $lim[$m]['max'] !== null ? max_com_tolerancia((int)$lim[$m]['max'], $tolerancia) : PHP_INT_MAX;
+    $mx = fn($m) => isset($lim[$m]['max']) && $lim[$m]['max'] !== null ? (int)$lim[$m]['max'] : PHP_INT_MAX;
 
     // referência de cada motoboy: o quadrante principal; sem quadrante (setores), o centro das entregas dele
     $ref = [];

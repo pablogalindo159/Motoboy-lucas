@@ -30,9 +30,7 @@ foreach (array_keys($pm) as $mid) {
     $lim[$mid] = ['min' => $val('min', $padroes[$mid]['pacotes_min'] ?? null), 'max' => $val('max', $padroes[$mid]['pacotes_max'] ?? null)];
 }
 $equilibrar = !isset($_REQUEST['equilibrar']) || $_REQUEST['equilibrar'] === '1';
-// tolerância do máximo (padrão 10%): o motoboy pode passar do máximo até esse tanto antes de redistribuir
-$tolPct = isset($_REQUEST['tolerancia']) && is_numeric($_REQUEST['tolerancia']) ? max(0, min(50, (int)$_REQUEST['tolerancia'])) : (int)cfg('tolerancia_max', 10);
-$eq = $equilibrar ? equilibrar_pacotes($pm, $lim, $tolPct / 100) : ['movidas' => [], 'recebeu' => [], 'cedeu' => []];
+$eq = $equilibrar ? equilibrar_pacotes($pm, $lim) : ['movidas' => [], 'recebeu' => [], 'cedeu' => []];
 
 if (($_POST['acao'] ?? '') === 'confirmar' && csrf_ok()) {
     if (!$pm) { flash('Escolha pelo menos um motoboy.', 'erro'); redirecionar("distribuir.php?data=$data&modo=$modo"); }
@@ -41,7 +39,6 @@ if (($_POST['acao'] ?? '') === 'confirmar' && csrf_ok()) {
         $up = db()->prepare("UPDATE quadrantes SET motoboy_id = ? WHERE id = ?");
         foreach ($grupos as $g) $up->execute([$g['motoboy_id'], (int)substr($g['chave'], 1)]);
     }
-    cfg_salvar('tolerancia_max', (string)$tolPct);
     if (!empty($_POST['salvar_padrao'])) {
         $up = db()->prepare("UPDATE usuarios SET pacotes_min = ?, pacotes_max = ? WHERE id = ?");
         foreach ($lim as $mid => $l) $up->execute([$l['min'], $l['max'], $mid]);
@@ -131,7 +128,7 @@ topo('Distribuir entregas', 'rotas', true);
     ?>
     <div class="cartao limites">
       <h2>Pacotes de cada motoboy hoje</h2>
-      <p class="dica">Ajuste o mínimo e o máximo do dia e toque em <b>Recalcular</b>. Quem ficar abaixo do mínimo recebe as entregas de outros quadrantes mais perto do quadrante principal dele; quem passar do máximo (com a tolerância) cede para quem tem espaço.</p>
+      <p class="dica">Ajuste o mínimo e o máximo do dia e toque em <b>Recalcular</b>. Quem ficar abaixo do mínimo recebe as entregas de outros quadrantes mais perto do quadrante principal dele; quem passar do máximo cede para quem tem espaço.</p>
       <div class="tabela-wrap">
         <table class="tabela">
           <thead><tr><th>Motoboy</th><th>No quadrante</th><th>Mínimo</th><th>Máximo</th><th>Fica com</th></tr></thead>
@@ -140,14 +137,12 @@ topo('Distribuir entregas', 'rotas', true);
               $final = array_sum(array_column($m['entregas'], 'pacotes'));
               $l = $lim[$mid];
               $abaixo = $l['min'] !== null && $final < $l['min'];
-              $maxTol = max_com_tolerancia($l['max'], $tolPct / 100);
-              $acima = $maxTol !== null && $final > $maxTol; ?>
+              $acima = $l['max'] !== null && $final > $l['max']; ?>
             <tr>
               <td><span class="bolinha" style="background:<?= e($m['cor']) ?>"></span><b><?= e($nomeMoto[$mid] ?? '?') ?></b><br><small><?= e(implode(' + ', $m['nomes'])) ?></small></td>
               <td><?= (int)$m['pac_quadrante'] ?></td>
               <td><input class="num-lim" type="number" min="0" inputmode="numeric" name="lim[<?= $mid ?>][min]" value="<?= e($l['min'] ?? '') ?>" placeholder="—"></td>
-              <td><input class="num-lim" type="number" min="1" inputmode="numeric" name="lim[<?= $mid ?>][max]" value="<?= e($l['max'] ?? '') ?>" placeholder="—">
-                <?php if ($maxTol !== null && $maxTol !== $l['max']): ?><br><small>até <?= $maxTol ?></small><?php endif; ?></td>
+              <td><input class="num-lim" type="number" min="1" inputmode="numeric" name="lim[<?= $mid ?>][max]" value="<?= e($l['max'] ?? '') ?>" placeholder="—"></td>
               <td>
                 <b class="<?= $abaixo || $acima ? 'txt-alerta' : '' ?>"><?= $final ?></b> pacotes
                 <?php if (!empty($eq['recebeu'][$mid])): ?><br><small class="mais">+<?= (int)$eq['recebeu'][$mid] ?> de <?= e(implode(', ', array_map(fn($de, $q) => ($nomeMoto[$de] ?? '?') . " ($q)", array_keys($origem[$mid]), $origem[$mid]))) ?></small><?php endif; ?>
@@ -159,9 +154,6 @@ topo('Distribuir entregas', 'rotas', true);
           </tbody>
         </table>
       </div>
-      <label class="lembrar">Tolerância do máximo
-        <input class="num-lim" type="number" name="tolerancia" min="0" max="50" value="<?= $tolPct ?>"> %
-        <small>(máximo 100 com 10% = até 110 pacotes antes de passar entregas para outro)</small></label>
       <input type="hidden" name="equilibrar" value="0">
       <label class="lembrar"><input type="checkbox" name="equilibrar" value="1" <?= $equilibrar ? 'checked' : '' ?>> Equilibrar pelo mínimo e máximo</label>
       <label class="lembrar"><input type="checkbox" name="salvar_padrao" value="1"> Salvar estes mínimos e máximos como padrão de cada motoboy</label>
