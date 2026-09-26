@@ -161,7 +161,7 @@ topo('Rota ' . $rota['motoboy'], 'rotas', true);
   </form>
 </div>
 
-<link rel="stylesheet" href="assets/sacas.css?v=22">
+<link rel="stylesheet" href="assets/sacas.css?v=23">
 <?php foreach ($socorros as $x): ?>
   <div class="aviso ambul">
     <b>🚑 Ambulância</b> · <?= e($x['de_nome']) ?> → <b><?= e($x['para_nome']) ?></b>:

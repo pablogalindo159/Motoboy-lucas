@@ -43,6 +43,23 @@ $s->execute([$u['id']]);
 $pedidoAberto = $s->fetch();
 $ultimoAviso = (int)db()->query("SELECT COALESCE(MAX(id), 0) FROM avisos WHERE para_tipo = 'motoboy' AND para_id = " . (int)$u['id'])->fetchColumn();
 $versaoTela = versao_motoboy((int)$u['id']);
+// quinzena: entregas feitas e valor; quando o admin marca como pago, zera
+$quinz = [];
+$qAtual = quinzena();
+$qAnt = quinzena($qAtual['ant']);
+foreach ([$qAnt, $qAtual] as $qq) {
+    $ap = apuracao($qq['ini'], $qq['fim'])[(int)$u['id']] ?? ['entregues' => 0, 'valor' => 0.0, 'sem_valor' => false];
+    $s = db()->prepare("SELECT * FROM pagamentos WHERE motoboy_id = ? AND periodo_inicio = ?");
+    $s->execute([$u['id'], $qq['ini']]);
+    $pg = $s->fetch();
+    $depois = 0;
+    if ($pg) { // entregas feitas depois do pagamento (se pagou antes da quinzena acabar)
+        $s = db()->prepare("SELECT COUNT(*) FROM paradas p JOIN rotas r ON r.id = p.rota_id WHERE r.motoboy_id = ? AND r.data BETWEEN ? AND ? AND p.status = 'entregue' AND p.finalizado_em > ?");
+        $s->execute([$u['id'], $qq['ini'], $qq['fim'], $pg['pago_em']]);
+        $depois = (int)$s->fetchColumn();
+    }
+    $quinz[] = ['q' => $qq, 'ap' => $ap, 'pago' => $pg, 'depois' => $depois];
+}
 $comFoto = [];
 if ($paradas) {
     $s = db()->prepare("SELECT parada_id, MAX(id) id FROM comprovantes WHERE parada_id IN (" . implode(',', array_map('intval', array_column($paradas, 'id'))) . ") GROUP BY parada_id");
@@ -73,7 +90,7 @@ topo('Minhas entregas');
 $sacasColetadas = count(array_filter($sacas, fn($x) => $x['coletada']));
 $corRota = $rota['cor'] ?? null;
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=22">
+<link rel="stylesheet" href="assets/sacas.css?v=23">
 <div class="app-moto">
   <header class="moto-topo">
     <img src="assets/icone.svg" alt="" width="40" height="40" class="icone-topo">
@@ -260,6 +277,26 @@ $corRota = $rota['cor'] ?? null;
     <?php endif; ?>
     <?php endif; ?>
   <?php endif; ?>
+  <?php [$qa, $qc] = $quinz; ?>
+<section class="quinzena-moto" id="quinzena">
+  <h2>💰 Suas entregas</h2>
+  <div class="q-linha">
+    <div><b><?= e($qc['q']['rotulo']) ?></b><small><?= e($qc['q']['dias']) ?></small></div>
+    <?php if ($qc['pago']): ?>
+      <div class="q-num"><b><?= $qc['depois'] ?></b><small>paga em <?= date('d/m', strtotime($qc['pago']['pago_em'])) ?> ✓<?= $qc['depois'] ? ' · novas depois do pagamento' : '' ?></small></div>
+    <?php else: ?>
+      <div class="q-num"><b><?= (int)$qc['ap']['entregues'] ?></b><small>entregas<?= !$qc['ap']['sem_valor'] && $qc['ap']['valor'] > 0 ? ' · ' . dinheiro($qc['ap']['valor']) : '' ?></small></div>
+    <?php endif; ?>
+  </div>
+  <?php if (!$qa['pago'] && $qa['ap']['entregues'] > 0): ?>
+  <div class="q-linha anterior">
+    <div><b><?= e($qa['q']['rotulo']) ?></b><small>a receber</small></div>
+    <div class="q-num"><b><?= (int)$qa['ap']['entregues'] ?></b><small>entregas<?= !$qa['ap']['sem_valor'] && $qa['ap']['valor'] > 0 ? ' · ' . dinheiro($qa['ap']['valor']) : '' ?></small></div>
+  </div>
+  <?php elseif ($qa['pago']): ?>
+  <p class="q-pago">✓ <?= e($qa['q']['rotulo']) ?> paga: <?= dinheiro($qa['pago']['valor_total']) ?> em <?= date('d/m', strtotime($qa['pago']['pago_em'])) ?></p>
+  <?php endif; ?>
+</section>
 </div>
 
 <dialog id="dlg-voador" class="dlg-voador">

@@ -28,7 +28,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
         $valor = round($ap[$mid]['valor'], 2);
         db()->prepare("INSERT INTO pagamentos (motoboy_id, periodo_inicio, periodo_fim, entregas, valor_entregas, ajuste, valor_total, observacao) VALUES (?,?,?,?,?,?,?,?)")
             ->execute([$mid, $q['ini'], $q['fim'], $ap[$mid]['entregues'], $valor, $ajuste, $valor + $ajuste, trim($_POST['observacao'] ?? '') ?: null]);
-        flash('Pagamento de ' . ($motoboys[$mid]['nome'] ?? '') . ' registrado: ' . dinheiro($valor + $ajuste) . '.');
+        flash('Pagamento de ' . ($motoboys[$mid]['nome'] ?? '') . ' registrado: ' . dinheiro($valor + $ajuste) . '. Ele foi avisado no celular.');
+        $obs = trim($_POST['observacao'] ?? '');
+        avisar('motoboy', $mid, 'pagamento', '💰 Caiu o pagamento: ' . dinheiro($valor + $ajuste),
+               $q['rotulo'] . ' · ' . (int)$ap[$mid]['entregues'] . ' entregas' . ($ajuste != 0 ? ' · ajuste ' . ($ajuste > 0 ? '+' : '−') . dinheiro(abs($ajuste)) : '') . ($obs ? " · $obs" : ''), 'motoboy.php', 'alta');
     }
     if ($acao === 'desfazer') {
         db()->prepare("DELETE FROM pagamentos WHERE motoboy_id = ? AND periodo_inicio = ?")->execute([$mid, $q['ini']]);
@@ -72,7 +75,7 @@ if (isset($_GET['csv'])) {
 
 topo('Financeiro', 'financeiro');
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=22">
+<link rel="stylesheet" href="assets/sacas.css?v=23">
 <div class="cabecalho-rota financeiro-topo">
   <div>
     <h1>Financeiro</h1>

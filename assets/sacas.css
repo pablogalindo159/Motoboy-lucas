@@ -269,3 +269,16 @@ tr.achada td { background: #EEFBD9; }
 .aviso-sos { background: #FBE4E1; color: var(--vermelho); padding: .8rem 1rem; font-weight: 600; display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; border-bottom: 1px solid #E3B8B3; }
 .link-recusar { margin-top: .7rem; background: none; border: 0; color: #fff; text-decoration: underline; font: inherit; cursor: pointer; padding: 0; }
 .sos-admin { display: flex; flex-wrap: wrap; gap: .5rem .8rem; align-items: center; }
+
+/* quinzena no app do motoboy */
+.quinzena-moto { background: var(--papel); border-top: 1px solid var(--linha); padding: 1rem; }
+.quinzena-moto h2 { font-size: 1.1rem; margin: 0 0 .6rem; }
+.q-linha { display: flex; justify-content: space-between; align-items: center; gap: .8rem; padding: .6rem .8rem; background: #000; color: #fff; border-radius: 12px; }
+.q-linha + .q-linha { margin-top: .5rem; }
+.q-linha.anterior { background: #F3F4F1; color: var(--asfalto); border: 1px solid var(--linha); }
+.q-linha small { display: block; font-size: .8rem; color: #BFC4BC; }
+.q-linha.anterior small { color: var(--suave); }
+.q-num { text-align: right; }
+.q-num b { font-family: var(--fonte-placa); font-size: 1.9rem; color: var(--marca); line-height: 1; }
+.q-linha.anterior .q-num b { color: var(--asfalto); }
+.q-pago { margin: .5rem 0 0; font-size: .88rem; color: var(--verde); font-weight: 600; }

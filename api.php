@@ -52,6 +52,7 @@ case 'localizacao':
     if (!$lat || !$lng) responder(['erro' => 'Posição inválida'], 422);
     db()->prepare("UPDATE usuarios SET lat = ?, lng = ?, ultima_localizacao = NOW() WHERE id = ?")->execute([$lat, $lng, $u['id']]);
     db()->prepare("INSERT INTO localizacoes (motoboy_id, lat, lng) VALUES (?,?,?)")->execute([$u['id'], $lat, $lng]);
+    verificar_alertas_periodicos();
     responder(['ok' => true]);
 
 // ---------- MOTOBOY: marcar entrega ----------
@@ -65,9 +66,7 @@ case 'status_parada':
     if (!$p) responder(['erro' => 'Parada não encontrada'], 404);
     db()->prepare("UPDATE paradas SET status = ?, motivo = ?, finalizado_em = NOW() WHERE id = ?")
         ->execute([$status, $status === 'falhou' ? mb_substr(trim($_POST['motivo'] ?? ''), 0, 255) : null, $p['id']]);
-    atualizar_status_rota((int)$p['rota_id']);
-    $st = db()->prepare("SELECT status FROM rotas WHERE id = ?"); $st->execute([$p['rota_id']]);
-    if ($st->fetchColumn() === 'finalizada') avisar('admin', null, 'rota_concluida', '✅ ' . $u['nome'] . ' concluiu a rota', null, 'rota.php?id=' . (int)$p['rota_id']);
+    apos_marcar_entrega((int)$p['rota_id'], (int)$u['id'], $u['nome']);
     responder(['ok' => true]);
 
 // ---------- MOTOBOY: marcar saca coletada (toque de novo desmarca) ----------
@@ -169,9 +168,13 @@ case 'pacote_voador':
     $endGps = mb_substr(trim((string)($_POST['endereco_gps'] ?? '')), 0, 255) ?: null;
     db()->prepare("INSERT INTO comprovantes (parada_id, motoboy_id, tipo, arquivo, lat, lng, precisao_m, endereco_gps, tirada_em) VALUES (?,?,?,?,?,?,?,?,?)")
         ->execute([$p['id'], $u['id'], 'pacote_voador', $nome, $num('lat'), $num('lng'), $num('precisao') !== null ? (int)$num('precisao') : null, $endGps, $tirada]);
+    $cid = (int)db()->lastInsertId();
+    $s = db()->prepare("SELECT entrega, endereco, numero_casa FROM paradas WHERE id = ?"); $s->execute([$p['id']]); $pp = $s->fetch();
+    avisar('admin', null, 'pacote_voador', '📷 ' . $u['nome'] . ': pacote voador na entrega ' . ($pp['entrega'] ?? ''),
+           trim(($pp['endereco'] ?? '') . ', ' . ($pp['numero_casa'] ?? '')) . ($endGps ? " · GPS em: $endGps" : '') . '. Toque para ver a foto.', "foto.php?id=$cid", 'normal');
     if ($p['status'] === 'pendente') {
         db()->prepare("UPDATE paradas SET status = 'entregue', motivo = 'Pacote voador (foto)', finalizado_em = NOW() WHERE id = ?")->execute([$p['id']]);
-        atualizar_status_rota((int)$p['rota_id']);
+        apos_marcar_entrega((int)$p['rota_id'], (int)$u['id'], $u['nome']);
     }
     responder(['ok' => true]);
 
@@ -235,6 +238,7 @@ case 'registrar_token':
 case 'avisos':
     $u = usuario();
     if (!$u) { http_response_code(401); echo json_encode(['erro' => 'Entre de novo.']); exit; }
+    verificar_alertas_periodicos();
     $desde = (int)($_GET['desde'] ?? 0);
     $filtro = $u['tipo'] === 'admin' ? "para_tipo = 'admin'" : "para_tipo = 'motoboy' AND para_id = " . (int)$u['id'];
     $ultimo = (int)db()->query("SELECT COALESCE(MAX(id), 0) FROM avisos WHERE $filtro")->fetchColumn();

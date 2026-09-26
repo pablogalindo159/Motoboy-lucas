@@ -70,6 +70,7 @@ function ler_lista_entregas(string $texto): array {
 // ---------- bairros atendidos: a busca de endereço só aceita estes ----------
 const BAIRROS_PADRAO = [
     'Pinhais'  => ['Weissópolis', 'Vargem Grande', 'Guarituba', 'Maria Antonieta', 'Planta Guilherme Weiss'],
+    'Piraquara' => ['Guarituba', 'Maria Antonieta', 'Vargem Grande'],
     'Curitiba' => ['Cajuru', 'Capão da Imbuia', 'Tarumã', 'Cristo Rei', 'Jardim Botânico', 'Alto da Rua XV'],
 ];
 function bairros_atendidos(): array {
@@ -1228,4 +1229,98 @@ function fcm_enviar(string $paraTipo, ?int $paraId, array $aviso): int {
         } elseif ($codigo === 401) cfg_salvar('fcm_acesso', null);
     }
     return $ok;
+}
+
+// =====================================================================
+// Alertas automáticos para o admin
+// =====================================================================
+const ALERTA_SEM_SINAL_MIN = 15;     // sem GPS há mais de 15 min durante a rota
+const ALERTA_FALHAS_SEGUIDAS = 3;    // 3 "não entregue" seguidas
+const ALERTA_RAPIDAS_QTD = 5;        // 5 entregas marcadas...
+const ALERTA_RAPIDAS_MIN = 3;        // ...em até 3 minutos
+
+function garantir_schema_v15(): void {
+    $flag = __DIR__ . '/.schema_v15';
+    if (file_exists($flag)) return;
+    db()->exec("CREATE TABLE IF NOT EXISTS alertas_enviados (
+        chave VARCHAR(120) PRIMARY KEY,
+        criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // bairros: Guarituba, Maria Antonieta e Vargem Grande também em Piraquara (e garantidos em Pinhais)
+    $lista = json_decode((string)cfg('bairros_atendidos', ''), true);
+    if (is_array($lista) && $lista) {
+        foreach (['Pinhais', 'Piraquara'] as $cid)
+            $lista[$cid] = array_values(array_unique(array_merge($lista[$cid] ?? [], ['Guarituba', 'Maria Antonieta', 'Vargem Grande'])));
+        cfg_salvar('bairros_atendidos', json_encode($lista, JSON_UNESCAPED_UNICODE));
+    }
+    db()->exec("DELETE FROM geocache WHERE status = 'fora_bairro'"); // procura de novo quem foi barrado
+    @touch($flag);
+}
+garantir_schema_v15();
+
+/** Envia o alerta só uma vez por $chave (evita repetir o mesmo alerta). */
+function alertar_uma_vez(string $chave, string $tipo, string $titulo, ?string $texto, ?string $link, string $prio = 'alta'): void {
+    try {
+        $s = db()->prepare("INSERT IGNORE INTO alertas_enviados (chave) VALUES (?)");
+        $s->execute([mb_substr($chave, 0, 120)]);
+        if ($s->rowCount()) avisar('admin', null, $tipo, $titulo, $texto, $link, $prio);
+    } catch (Throwable $ex) {}
+}
+
+/** Depois que o motoboy marca uma entrega (Entregue, Não entregue ou pacote voador). */
+function apos_marcar_entrega(int $rotaId, int $motoboyId, string $nome): void {
+    atualizar_status_rota($rotaId);
+    // ✅ rota concluída
+    $s = db()->prepare("SELECT status FROM rotas WHERE id = ?"); $s->execute([$rotaId]);
+    if ($s->fetchColumn() === 'finalizada') alertar_uma_vez("concluida:$rotaId", 'rota_concluida', "✅ $nome concluiu a rota", null, "rota.php?id=$rotaId", 'normal');
+    // ❌ várias "não entregue" seguidas
+    $s = db()->prepare("SELECT id, status FROM paradas WHERE rota_id = ? AND status <> 'pendente' AND finalizado_em IS NOT NULL ORDER BY finalizado_em DESC, id DESC LIMIT " . (ALERTA_FALHAS_SEGUIDAS + 1));
+    $s->execute([$rotaId]);
+    $todas = $s->fetchAll();
+    $ult = array_slice($todas, 0, ALERTA_FALHAS_SEGUIDAS);
+    $antes = $todas[ALERTA_FALHAS_SEGUIDAS] ?? null; // avisa só quando a sequência chega a 3 (não a cada falha a mais)
+    if (count($ult) === ALERTA_FALHAS_SEGUIDAS && !array_filter($ult, fn($p) => $p['status'] !== 'falhou') && (!$antes || $antes['status'] !== 'falhou'))
+        alertar_uma_vez('falhas:' . $ult[0]['id'], 'falhas_seguidas', "❌ $nome: " . ALERTA_FALHAS_SEGUIDAS . ' "não entregue" seguidas', 'Pode estar com problema na rota. Vale ligar para ele.', "rota.php?id=$rotaId");
+    // ⚡ muitas entregas marcadas em pouco tempo
+    $s = db()->prepare("SELECT COUNT(*) FROM paradas p JOIN rotas r ON r.id = p.rota_id
+                        WHERE r.motoboy_id = ? AND p.status <> 'pendente' AND p.finalizado_em >= NOW() - INTERVAL " . ALERTA_RAPIDAS_MIN . " MINUTE");
+    $s->execute([$motoboyId]);
+    $n = (int)$s->fetchColumn();
+    if ($n >= ALERTA_RAPIDAS_QTD)
+        alertar_uma_vez("rapidas:$motoboyId:" . date('YmdHi', intdiv(time(), 600) * 600), 'entregas_rapidas', "⚡ $nome marcou $n entregas em " . ALERTA_RAPIDAS_MIN . ' min',
+                        'Muitas entregas seguidas em pouco tempo. Confira se ele está mesmo nos endereços.', "rota.php?id=$rotaId");
+}
+
+/** Alertas que dependem do relógio (sem GPS, atraso no CD). Roda no máximo 1 vez por minuto. */
+function verificar_alertas_periodicos(): void {
+    try {
+        $ult = (int)cfg('alertas_verificados_em', 0);
+        if (time() - $ult < 60) return;
+        cfg_salvar('alertas_verificados_em', (string)time());
+        $hoje = date('Y-m-d');
+        // ⚠️ sem sinal de GPS durante a rota (saiu do CD e ainda tem entrega pendente)
+        $s = db()->prepare("SELECT u.id, u.nome, u.ultima_localizacao, MIN(r.id) rota_id FROM rotas r JOIN usuarios u ON u.id = r.motoboy_id
+                            WHERE r.data = ? AND r.saida_cd IS NOT NULL
+                              AND EXISTS (SELECT 1 FROM paradas p WHERE p.rota_id = r.id AND p.status = 'pendente')
+                              AND (u.ultima_localizacao IS NULL OR u.ultima_localizacao < NOW() - INTERVAL " . ALERTA_SEM_SINAL_MIN . " MINUTE)
+                              AND r.saida_cd < NOW() - INTERVAL " . ALERTA_SEM_SINAL_MIN . " MINUTE
+                            GROUP BY u.id");
+        $s->execute([$hoje]);
+        foreach ($s->fetchAll() as $m) {
+            $desde = $m['ultima_localizacao'] ? hora_br($m['ultima_localizacao']) : null;
+            alertar_uma_vez("semsinal:{$m['id']}:" . ($m['ultima_localizacao'] ?: $hoje), 'sem_sinal', "⚠️ {$m['nome']} sem sinal de GPS",
+                            $desde ? "Última posição às $desde. Pode estar sem internet, sem bateria ou com o app fechado." : 'Não mandou localização desde que saiu do CD.',
+                            "rota.php?id={$m['rota_id']}");
+        }
+        // ⏰ não chegou no CD até o horário definido
+        $limite = (string)cfg('horario_cd', '');
+        if (preg_match('/^\d{2}:\d{2}$/', $limite) && date('H:i') >= $limite) {
+            $s = db()->prepare("SELECT r.id, u.nome FROM rotas r JOIN usuarios u ON u.id = r.motoboy_id
+                                WHERE r.data = ? AND r.chegada_cd IS NULL AND r.saida_cd IS NULL
+                                  AND EXISTS (SELECT 1 FROM sacas s WHERE s.rota_id = r.id)");
+            $s->execute([$hoje]);
+            foreach ($s->fetchAll() as $r)
+                alertar_uma_vez("atrasocd:{$r['id']}", 'atraso_cd', "⏰ {$r['nome']} ainda não chegou no CD", "Passou do horário ($limite) e ele não tocou em \"Cheguei no CD\".", "rota.php?id={$r['id']}");
+        }
+    } catch (Throwable $ex) {}
 }

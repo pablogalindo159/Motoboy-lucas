@@ -21,6 +21,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
         cfg_salvar('carto_key', preg_match('/^[A-Za-z0-9_\-]{8,120}$/', $k) ? $k : null);
         flash($k === '' ? 'Chave do mapa da TV removida.' : (cfg('carto_key') ? 'Chave do mapa da TV salva.' : 'Chave inválida.'), cfg('carto_key') || $k === '' ? 'ok' : 'erro');
     }
+    if ($acao === 'horario_cd') {
+        $h = trim($_POST['horario_cd'] ?? '');
+        cfg_salvar('horario_cd', preg_match('/^\d{2}:\d{2}$/', $h) ? $h : null);
+        flash($h ? "Aviso de atraso ligado: quem não chegar no CD até $h, você é avisado." : 'Aviso de atraso no CD desligado.');
+    }
     if ($acao === 'firebase') {
         $txt = trim($_POST['fcm_json'] ?? '');
         if (!empty($_FILES['fcm_arquivo']['tmp_name']) && is_uploaded_file($_FILES['fcm_arquivo']['tmp_name'])) $txt = file_get_contents($_FILES['fcm_arquivo']['tmp_name']);
@@ -63,6 +68,12 @@ topo('Centro de distribuição', 'rotas', true);
       <p><b>Chave do Google Maps</b> <small>(opcional)</small><br>Com ela os endereços são achados em segundos e com mais precisão. Sem ela o sistema usa o OpenStreetMap, grátis, mas leva cerca de 1 segundo por endereço novo.</p>
       <label>Chave da Geocoding API<input name="google_key" value="<?= e(cfg('google_key', '')) ?>" autocomplete="off"></label>
       <button class="btn">Salvar chave</button>
+    </form>
+    <form method="post" class="form cartao" style="margin-top:1rem">
+      <?= csrf_field() ?><input type="hidden" name="acao" value="horario_cd">
+      <p><b>Horário para chegar no CD</b><br>Se um motoboy com rota no dia não tocar em "Cheguei no CD" até esse horário, você recebe o aviso ⏰. Deixe em branco para desligar.</p>
+      <label>Horário limite<input type="time" name="horario_cd" value="<?= e(cfg('horario_cd', '')) ?>"></label>
+      <button class="btn">Salvar horário</button>
     </form>
     <?php $conta = fcm_conta();
           $nDisp = (int)db()->query("SELECT COUNT(DISTINCT usuario_id) FROM dispositivos")->fetchColumn();
