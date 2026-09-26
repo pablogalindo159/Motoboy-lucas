@@ -341,32 +341,43 @@ function entregas_do_dia(string $data): array {
     return $s->fetchAll();
 }
 
-/** Grupos pelos quadrantes desenhados. Retorna [grupos, avisos]. */
+// Até esta distância da borda de uma zona, a entrega é da zona (fresta entre zonas vizinhas). Mais longe: fora do quadrante.
+const FOLGA_FRESTA_M = 150;
+
+/** Zona de um ponto: [id do quadrante ou null, nome da zona mais perto, distância até ela em metros]. */
+function zona_do_ponto(array $p, array $quads): array {
+    $achou = null; $fundo = -1;
+    // dentro de mais de uma zona (sobreposição): fica na zona onde está mais "para dentro"
+    foreach ($quads as $q) {
+        if (count($q['pontos']) < 3 || !dentro_poligono($p, $q['pontos'])) continue;
+        $d = distancia_borda($p, $q['pontos']);
+        if ($d > $fundo) { $fundo = $d; $achou = $q; }
+    }
+    if ($achou) return [(int)$achou['id'], $achou['nome'], 0.0];
+    $perto = null; $dm = INF;
+    foreach ($quads as $q) { if (count($q['pontos']) < 3) continue; $d = distancia_borda($p, $q['pontos']); if ($d < $dm) { $dm = $d; $perto = $q; } }
+    if ($perto && $dm <= FOLGA_FRESTA_M) return [(int)$perto['id'], $perto['nome'], $dm];
+    return [null, $perto['nome'] ?? null, $dm];
+}
+
+/** Grupos pelos quadrantes. Entregas fora das zonas NÃO são distribuídas: vão para o grupo "fora". Retorna [grupos, avisos]. */
 function grupos_por_quadrante(string $data): array {
     $quads = quadrantes_ativos();
     $entregas = entregas_do_dia($data);
-    $grupoDe = []; $fora = 0;
+    $grupoDe = []; $foraLista = []; $frestas = 0;
     foreach ($entregas as $e) {
         if ($e['lat'] === null) continue;
-        $p = [(float)$e['lat'], (float)$e['lng']];
-        $achou = null; $fundo = -1;
-        // dentro de mais de uma zona (sobreposição): fica na zona onde está mais "para dentro"
-        foreach ($quads as $q) {
-            if (count($q['pontos']) < 3 || !dentro_poligono($p, $q['pontos'])) continue;
-            $d = distancia_borda($p, $q['pontos']);
-            if ($d > $fundo) { $fundo = $d; $achou = $q['id']; }
-        }
-        if ($achou === null && $quads) { // fora de todas (fresta entre zonas): vai para a borda mais perto
-            $fora++; $dm = INF;
-            foreach ($quads as $q) { if (count($q['pontos']) < 3) continue; $d = distancia_borda($p, $q['pontos']); if ($d < $dm) { $dm = $d; $achou = $q['id']; } }
-        }
-        if ($achou !== null) $grupoDe[$e['id']] = 'q' . $achou;
+        [$qid, $perto, $dist] = zona_do_ponto([(float)$e['lat'], (float)$e['lng']], $quads);
+        if ($qid !== null) { $grupoDe[$e['id']] = 'q' . $qid; if ($dist > 0) $frestas++; }
+        else { $grupoDe[$e['id']] = 'fora'; $foraLista[] = $e + ['zona_perto' => $perto, 'dist_m' => (int)round($dist)]; }
     }
+    $semLocal = count($entregas) - count($grupoDe);
     completar_sem_local($entregas, $grupoDe);
     $grupos = [];
     foreach ($quads as $q) $grupos['q' . $q['id']] = ['chave' => 'q' . $q['id'], 'nome' => $q['nome'], 'cor' => $q['cor'], 'motoboy_id' => $q['motoboy_id'], 'pontos' => $q['pontos'], 'entregas' => []];
+    $grupos['fora'] = ['chave' => 'fora', 'nome' => 'FORA DOS QUADRANTES', 'cor' => '#7A7A7A', 'motoboy_id' => null, 'pontos' => null, 'entregas' => [], 'fora' => true];
     foreach ($entregas as $e) if (isset($grupoDe[$e['id']])) $grupos[$grupoDe[$e['id']]]['entregas'][] = $e;
-    return [array_values(array_filter($grupos, fn($g) => $g['entregas'])), ['fora' => $fora]];
+    return [array_values(array_filter($grupos, fn($g) => $g['entregas'])), ['fora' => count($foraLista), 'fora_lista' => $foraLista, 'fresta' => $frestas, 'sem_local' => $semLocal]];
 }
 
 /** Divisão automática em setores (fatias de pizza saindo do CD), com pacotes equilibrados. */

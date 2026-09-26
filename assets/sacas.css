@@ -162,3 +162,25 @@
 .sel-extra { border-style: dashed; color: var(--suave); }
 .divisao { list-style: none; margin: .6rem 0 0; padding: .5rem .6rem; background: var(--fundo); border-radius: 8px; font-size: .88rem; }
 .divisao li { padding: .15rem 0; }
+
+/* entregas fora dos quadrantes */
+.fora-quad details { margin-top: .5rem; }
+.fora-quad summary { cursor: pointer; font-weight: 600; }
+.fora-quad .tabela-wrap { margin-top: .5rem; max-height: 320px; overflow: auto; }
+
+/* lista de entregas do dia (página Rotas) */
+.lista-entregas { margin-top: 2rem; }
+.lista-topo { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: .6rem; }
+.lista-topo h2 { margin: 0; }
+.lista-topo h2 small { font-size: .9rem; font-weight: 500; }
+.lista-topo input { max-width: 360px; }
+.filtros { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: .4rem; }
+.filtros button { font: inherit; font-weight: 600; padding: .45rem .9rem; border-radius: 99px; border: 1px solid var(--linha); background: #fff; cursor: pointer; }
+.filtros button b { margin-left: .3rem; color: var(--suave); }
+.filtros button.ativo { background: #000; color: var(--marca); border-color: #000; }
+.filtros button.ativo b { color: #fff; }
+.tabela-longa { max-height: 70vh; overflow: auto; }
+.tabela-longa thead th { position: sticky; top: 0; background: #fff; z-index: 1; }
+.selo.sem-moto { background: #F6DDD9; color: var(--vermelho); }
+.txt-erro { color: var(--vermelho); font-weight: 600; }
+tr.achada td { background: #EEFBD9; }

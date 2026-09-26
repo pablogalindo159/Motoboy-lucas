@@ -32,11 +32,32 @@ $s = db()->prepare("
   WHERE r.data = ? GROUP BY r.id ORDER BY u.nome, r.id");
 $s->execute([$data]);
 $rotas = $s->fetchAll();
+
+// todas as entregas da lista do dia, com o motoboy que ficou com cada uma (ou sem motoboy) e a zona
+$s = db()->prepare("
+  SELECT e.entrega, e.rua, e.numero_casa, e.pacotes, e.lat, e.lng, x.status, x.nome motoboy, x.cor
+  FROM entregas e
+  LEFT JOIN (SELECT p.entrega, p.status, u.nome, r.cor FROM paradas p JOIN rotas r ON r.id = p.rota_id JOIN usuarios u ON u.id = r.motoboy_id
+             WHERE r.data = ? AND p.entrega IS NOT NULL) x ON x.entrega = e.entrega
+  WHERE e.data = ? ORDER BY e.entrega");
+$s->execute([$data, $data]);
+$lista = $s->fetchAll();
+$quadsLista = quadrantes_ativos();
+foreach ($lista as &$it) {
+    if ($it['lat'] === null) { $it['zona'] = null; $it['fora'] = false; $it['sem_local'] = true; continue; }
+    [$qid, $perto, $dist] = zona_do_ponto([(float)$it['lat'], (float)$it['lng']], $quadsLista);
+    $it['sem_local'] = false;
+    $it['fora'] = $quadsLista && $qid === null;
+    $it['zona'] = $qid !== null ? $perto : ($perto ? "fora · " . ($dist >= 1000 ? number_format($dist / 1000, 1, ',', '') . ' km' : round($dist) . ' m') . " de $perto" : null);
+}
+unset($it);
+$contagem = ['todas' => count($lista), 'sem' => count(array_filter($lista, fn($i) => !$i['motoboy'])), 'fora' => count(array_filter($lista, fn($i) => $i['fora']))];
+$rotStatus = ['pendente' => 'Pendente', 'entregue' => 'Entregue', 'falhou' => 'Não entregue'];
 $rotuloStatus = ['aberta' => 'Aguardando', 'em_andamento' => 'Em andamento', 'finalizada' => 'Finalizada'];
 
 topo('Rotas', 'rotas');
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=13">
+<link rel="stylesheet" href="assets/sacas.css?v=14">
 <div class="cabecalho-rota"><h1>Rotas</h1>
   <div class="acoes">
     <a class="btn" href="cd.php">Posição do CD</a>
@@ -92,4 +113,64 @@ topo('Rotas', 'rotas');
     </div>
   </div>
 </div>
+
+<?php if ($lista): ?>
+<section class="lista-entregas" id="lista-entregas">
+  <div class="lista-topo">
+    <h2>Entregas do dia <small><?= data_br($data) ?></small></h2>
+    <input type="search" id="busca" placeholder="Buscar pelo número da entrega ou endereço" inputmode="search" autocomplete="off">
+  </div>
+  <div class="filtros" role="group" aria-label="Filtrar">
+    <button type="button" class="ativo" data-f="todas">Todas <b><?= $contagem['todas'] ?></b></button>
+    <button type="button" data-f="sem">Sem motoboy <b><?= $contagem['sem'] ?></b></button>
+    <?php if ($quadsLista): ?><button type="button" data-f="fora">Fora do quadrante <b><?= $contagem['fora'] ?></b></button><?php endif; ?>
+  </div>
+  <p class="dica" id="achados"></p>
+  <div class="tabela-wrap tabela-longa">
+    <table class="tabela">
+      <thead><tr><th>Nº</th><th>Endereço</th><th>Pacotes</th><th>Zona</th><th>Motoboy</th><th>Situação</th></tr></thead>
+      <tbody id="corpo-lista">
+      <?php foreach ($lista as $it): ?>
+        <tr data-num="<?= (int)$it['entrega'] ?>" data-busca="<?= e(sem_acento($it['rua'] . ' ' . $it['numero_casa'])) ?>" data-sem="<?= $it['motoboy'] ? 0 : 1 ?>" data-fora="<?= $it['fora'] ? 1 : 0 ?>">
+          <td><span class="num-parada"><?= (int)$it['entrega'] ?></span></td>
+          <td><?= e($it['rua']) ?>, <?= e($it['numero_casa']) ?></td>
+          <td><?= (int)$it['pacotes'] ?></td>
+          <td><?php if ($it['sem_local']): ?><small class="txt-alerta">não achado no mapa</small>
+              <?php elseif ($it['fora']): ?><small class="txt-erro">⚠ <?= e($it['zona']) ?></small>
+              <?php else: ?><small><?= e($it['zona'] ?? '—') ?></small><?php endif; ?></td>
+          <td><?php if ($it['motoboy']): ?><span class="bolinha" style="background:<?= e($it['cor'] ?: '#999') ?>"></span><?= e($it['motoboy']) ?>
+              <?php else: ?><span class="selo sem-moto">Sem motoboy</span><?php endif; ?></td>
+          <td><?= $it['status'] ? '<span class="selo ' . e($it['status']) . '">' . $rotStatus[$it['status']] . '</span>' : '—' ?></td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+</section>
+<script>
+(() => {
+  const busca = document.getElementById('busca'), linhas = [...document.querySelectorAll('#corpo-lista tr')], achados = document.getElementById('achados');
+  const semAcento = t => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  let filtro = 'todas';
+  function aplicar() {
+    const q = semAcento(busca.value.trim());
+    const soNumero = /^\d+$/.test(q);
+    let n = 0;
+    linhas.forEach(tr => {
+      let ok = filtro === 'todas' || (filtro === 'sem' && tr.dataset.sem === '1') || (filtro === 'fora' && tr.dataset.fora === '1');
+      if (ok && q) ok = soNumero ? tr.dataset.num === q || tr.dataset.num.startsWith(q) : tr.dataset.busca.includes(q);
+      tr.hidden = !ok; if (ok) n++;
+    });
+    achados.textContent = q || filtro !== 'todas' ? `${n} de ${linhas.length} entregas` : '';
+    // número exato: destaca e leva até ela
+    linhas.forEach(tr => tr.classList.toggle('achada', soNumero && tr.dataset.num === q));
+  }
+  busca.addEventListener('input', aplicar);
+  document.querySelectorAll('.filtros button').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.filtros button').forEach(x => x.classList.remove('ativo'));
+    b.classList.add('ativo'); filtro = b.dataset.f; aplicar();
+  }));
+})();
+</script>
+<?php endif; ?>
 <?php rodape();

@@ -78,7 +78,7 @@ if (($_POST['acao'] ?? '') === 'confirmar' && csrf_ok() && $equilibrar && $pende
     // quadrante: guarda o motoboy escolhido como padrão para os próximos dias
     if ($modo === 'quadrantes' && !empty($_POST['lembrar'])) {
         $up = db()->prepare("UPDATE quadrantes SET motoboy_id = ? WHERE id = ?");
-        foreach ($grupos as $g) $up->execute([$g['motoboys'][0] ?? null, (int)substr($g['chave'], 1)]);
+        foreach ($grupos as $g) if ($g['chave'] !== 'fora') $up->execute([$g['motoboys'][0] ?? null, (int)substr($g['chave'], 1)]);
     }
     if (!empty($_POST['salvar_padrao'])) {
         $up = db()->prepare("UPDATE usuarios SET pacotes_min = ?, pacotes_max = ? WHERE id = ?");
@@ -103,7 +103,7 @@ $iniciadas = (int)$s->fetchColumn();
 
 topo('Distribuir entregas', 'rotas', true);
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=13">
+<link rel="stylesheet" href="assets/sacas.css?v=14">
 <a href="rotas.php?data=<?= e($data) ?>" class="voltar">← Rotas</a>
 <h1>Distribuir entregas de <?= data_br($data) ?></h1>
 
@@ -133,7 +133,30 @@ topo('Distribuir entregas', 'rotas', true);
   </form>
 <?php endif; ?>
 
-<?php if (!empty($avisos['fora'])): ?><p class="dica"><?= (int)$avisos['fora'] ?> entregas estavam fora dos quadrantes e foram para o quadrante mais perto.</p><?php endif; ?>
+<?php if (!empty($avisos['fora'])):
+    $foraPac = array_sum(array_column($avisos['fora_lista'], 'pacotes'));
+    $foraGrupo = null; foreach ($grupos as $g) if ($g['chave'] === 'fora') $foraGrupo = $g; ?>
+  <div class="aviso erro fora-quad">
+    <b>⚠ <?= (int)$avisos['fora'] ?> entregas fora dos quadrantes (<?= $foraPac ?> pacotes)</b>
+    <?php if ($foraGrupo && $foraGrupo['motoboys']): ?>
+      — vão para <?= e(implode(', ', array_map(fn($m) => $nomeMoto[$m] ?? '?', $foraGrupo['motoboys']))) ?>, como você escolheu no card "FORA DOS QUADRANTES".
+    <?php else: ?>
+      — <b>não serão distribuídas</b>. Para entregar mesmo assim, escolha um motoboy no card "FORA DOS QUADRANTES".
+    <?php endif; ?>
+    <details><summary>Ver quais são</summary>
+      <div class="tabela-wrap"><table class="tabela">
+        <thead><tr><th>Nº</th><th>Endereço</th><th>Pacotes</th><th>Zona mais perto</th></tr></thead>
+        <tbody><?php foreach ($avisos['fora_lista'] as $f): ?>
+          <tr><td><b><?= (int)$f['entrega'] ?></b></td><td><?= e($f['rua']) ?>, <?= e($f['numero_casa']) ?></td><td><?= (int)$f['pacotes'] ?></td>
+              <td><?= e($f['zona_perto'] ?? '—') ?> <small>(<?= $f['dist_m'] >= 1000 ? number_format($f['dist_m'] / 1000, 1, ',', '') . ' km' : $f['dist_m'] . ' m' ?>)</small>
+                  <a href="https://www.google.com/maps?q=<?= e($f['lat']) ?>,<?= e($f['lng']) ?>" target="_blank">mapa</a></td></tr>
+        <?php endforeach; ?></tbody>
+      </table></div>
+      <p class="dica">O endereço pode ter sido achado no lugar errado. Confira no mapa; se estiver certo, é entrega fora da sua região.</p>
+    </details>
+  </div>
+<?php endif; ?>
+<?php if (!empty($avisos['sem_local'])): ?><p class="dica"><?= (int)$avisos['sem_local'] ?> entregas não foram achadas no mapa e seguem com as entregas de número vizinho.</p><?php endif; ?>
 <?php if ($iniciadas): ?><div class="aviso erro"><?= $iniciadas ?> rotas deste dia já começaram (chegada no CD ou entrega marcada). Distribuir de novo apaga as rotas atuais do dia.</div><?php endif; ?>
 
 <?php if ($grupos): ?>
