@@ -96,7 +96,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
     }
 
     if ($acao === 'trocar_motoboy') {
-        db()->prepare("UPDATE rotas SET motoboy_id = ? WHERE id = ?")->execute([(int)$_POST['motoboy_id'], $id]);
+        $novo = (int)$_POST['motoboy_id'];
+        db()->prepare("UPDATE rotas SET motoboy_id = ? WHERE id = ?")->execute([$novo, $id]);
+        if ($novo !== (int)$rota['motoboy_id']) {
+            avisar('motoboy', $novo, 'rota_trocada', '📦 Você recebeu a rota de ' . $rota['motoboy'], 'A rota ' . ($rota['descricao'] ?: '') . ' agora é sua. Confira no app.', 'motoboy.php', 'alta');
+            avisar('motoboy', (int)$rota['motoboy_id'], 'rota_trocada', '📦 Sua rota passou para ' . nome_usuario($novo), null, 'motoboy.php', 'alta');
+        }
         flash('Motoboy da rota alterado.');
     }
 
@@ -156,7 +161,7 @@ topo('Rota ' . $rota['motoboy'], 'rotas', true);
   </form>
 </div>
 
-<link rel="stylesheet" href="assets/sacas.css?v=21">
+<link rel="stylesheet" href="assets/sacas.css?v=22">
 <?php foreach ($socorros as $x): ?>
   <div class="aviso ambul">
     <b>🚑 Ambulância</b> · <?= e($x['de_nome']) ?> → <b><?= e($x['para_nome']) ?></b>:

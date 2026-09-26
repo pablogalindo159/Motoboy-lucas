@@ -38,6 +38,11 @@ $s = db()->prepare("SELECT x.*, u.nome para_nome FROM socorros x JOIN usuarios u
                     WHERE x.de_motoboy = ? AND x.data = ? AND x.status <> 'cancelado' ORDER BY x.id DESC");
 $s->execute([$u['id'], $hoje]);
 $socorrosPassados = $s->fetchAll();
+$s = db()->prepare("SELECT * FROM pedidos_socorro WHERE motoboy_id = ? AND status = 'aberto' ORDER BY id DESC LIMIT 1");
+$s->execute([$u['id']]);
+$pedidoAberto = $s->fetch();
+$ultimoAviso = (int)db()->query("SELECT COALESCE(MAX(id), 0) FROM avisos WHERE para_tipo = 'motoboy' AND para_id = " . (int)$u['id'])->fetchColumn();
+$versaoTela = versao_motoboy((int)$u['id']);
 $comFoto = [];
 if ($paradas) {
     $s = db()->prepare("SELECT parada_id, MAX(id) id FROM comprovantes WHERE parada_id IN (" . implode(',', array_map('intval', array_column($paradas, 'id'))) . ") GROUP BY parada_id");
@@ -68,7 +73,7 @@ topo('Minhas entregas');
 $sacasColetadas = count(array_filter($sacas, fn($x) => $x['coletada']));
 $corRota = $rota['cor'] ?? null;
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=21">
+<link rel="stylesheet" href="assets/sacas.css?v=22">
 <div class="app-moto">
   <header class="moto-topo">
     <img src="assets/icone.svg" alt="" width="40" height="40" class="icone-topo">
@@ -76,7 +81,8 @@ $corRota = $rota['cor'] ?? null;
       <strong><?= e($u['nome']) ?></strong>
       <span id="gps" class="gps">Ligando GPS…</span>
     </div>
-    <a href="logout.php" class="sair" onclick="window.NetPointApp && NetPointApp.pararRastreio()">Sair</a>
+    <?php if ($rota && !$pedidoAberto): ?><button type="button" class="btn-sos" onclick="document.getElementById('dlg-sos').showModal()" aria-label="Pedir socorro">🆘</button><?php endif; ?>
+    <a href="logout.php" class="sair" onclick="if (window.NetPointApp) { NetPointApp.pararRastreio(); NetPointApp.desligarAvisos && NetPointApp.desligarAvisos(); }">Sair</a>
   </header>
 
   <?php if (count($rotas) > 1): ?>
@@ -87,6 +93,11 @@ $corRota = $rota['cor'] ?? null;
   </nav>
   <?php endif; ?>
 
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <?php if ($pedidoAberto): ?>
+    <div class="aviso-sos">🆘 Pedido de socorro enviado às <?= hora_br($pedidoAberto['criado_em']) ?> (<?= e($pedidoAberto['motivo']) ?>). O admin está vendo e vai te avisar aqui.
+      <button type="button" class="btn pequeno" onclick="cancelarSos()">Resolvi, cancelar pedido</button></div>
+  <?php endif; ?>
   <?php foreach ($socorrosBuscar as $x):
       $nums = []; foreach ($paradas as $p) if ((int)$p['socorro_id'] === (int)$x['id'] && $p['entrega']) $nums[] = (int)$p['entrega']; ?>
     <section class="socorro">
@@ -98,6 +109,7 @@ $corRota = $rota['cor'] ?? null;
         <?php if ($x['de_tel']): ?><a class="btn grande" href="tel:<?= e(preg_replace('/\D/', '', $x['de_tel'])) ?>">Ligar</a><?php endif; ?>
         <button class="btn sucesso grande" onclick="socorroColetado(<?= (int)$x['id'] ?>)">Peguei os pacotes</button>
       </div>
+      <button type="button" class="link-recusar" onclick="recusarSocorro(<?= (int)$x['id'] ?>)">Não posso ir — recusar</button>
     </section>
   <?php endforeach; ?>
   <?php foreach ($socorrosPassados as $x): ?>
@@ -267,6 +279,22 @@ $corRota = $rota['cor'] ?? null;
     <button class="btn sucesso grande" id="voador-salvar" onclick="salvarVoador()">Salvar e marcar entregue</button>
   </div>
   <input type="file" id="voador-arquivo" accept="image/*" capture="environment" hidden>
+</dialog>
+
+<dialog id="dlg-sos">
+  <form method="dialog" class="form" id="f-sos">
+    <h2>🆘 Pedir socorro</h2>
+    <p class="dica">O admin recebe o aviso na hora e decide o que fazer.</p>
+    <label><input type="radio" name="m" value="Moto quebrou" checked> Moto quebrou</label>
+    <label><input type="radio" name="m" value="Pneu furado"> Pneu furado</label>
+    <label><input type="radio" name="m" value="Acidente"> Acidente</label>
+    <label><input type="radio" name="m" value="Passando mal"> Passando mal</label>
+    <label><input type="radio" name="m" value="Outro"> Outro <input name="outro" placeholder="Descreva"></label>
+    <div class="confirmar">
+      <button value="cancelar" class="btn">Voltar</button>
+      <button value="ok" class="btn perigo">Pedir socorro</button>
+    </div>
+  </form>
 </dialog>
 
 <dialog id="dlg-motivo">
@@ -496,6 +524,63 @@ async function salvarVoador() {
     bt.disabled = false; bt.textContent = 'Salvar e marcar entregue';
   }
 }
+
+// ---- Pedir socorro / recusar ambulância ----
+document.getElementById('dlg-sos').addEventListener('close', async function () {
+  if (this.returnValue !== 'ok') return;
+  const f = document.getElementById('f-sos');
+  let m = f.m.value; if (m === 'Outro') m = f.outro.value.trim() || 'Outro';
+  const pos = await new Promise(r => navigator.geolocation ? navigator.geolocation.getCurrentPosition(p => r(p.coords), () => r(null), { timeout: 8000, maximumAge: 60000 }) : r(null));
+  try {
+    const r = await post({ acao: 'pedir_socorro', motivo: m, lat: pos ? pos.latitude : '', lng: pos ? pos.longitude : '' });
+    if (!r.ok) throw new Error();
+    location.reload();
+  } catch (e) { alert('Não foi possível enviar. Confira a internet e tente de novo, ou ligue para a loja.'); }
+});
+async function cancelarSos() {
+  if (!confirm('Cancelar o pedido de socorro?')) return;
+  try { await post({ acao: 'cancelar_pedido_socorro' }); location.reload(); } catch (e) { alert('Não foi possível cancelar.'); }
+}
+async function recusarSocorro(id) {
+  const motivo = prompt('Por que você não pode ir? (o admin vai escolher outro motoboy)');
+  if (motivo === null) return;
+  if (!motivo.trim()) { alert('Escreva o motivo.'); return; }
+  try { const r = await post({ acao: 'socorro_recusar', socorro_id: id, motivo: motivo.trim() }); const j = await r.json(); if (!r.ok) throw new Error(j.erro); location.reload(); }
+  catch (e) { alert(e.message || 'Não foi possível recusar.'); }
+}
+
+// ---- Avisos ao vivo: confere o servidor a cada 15 s; se algo mudou, a tela se atualiza sozinha ----
+let ultimoAviso = <?= $ultimoAviso ?>;
+const VERSAO_TELA = <?= json_encode($versaoTela) ?>;
+function toast(a) {
+  const t = document.createElement('div');
+  t.className = 'toast' + (a.prioridade === 'alta' ? ' alta' : '');
+  t.innerHTML = `<b></b><span></span>`;
+  t.querySelector('b').textContent = a.titulo; t.querySelector('span').textContent = a.texto || '';
+  t.onclick = () => t.remove();
+  document.getElementById('toasts').prepend(t);
+  setTimeout(() => t.remove(), 12000);
+}
+function bip() {
+  try { const c = new (window.AudioContext || window.webkitAudioContext)(); const o = c.createOscillator(), g = c.createGain();
+        o.frequency.value = 880; o.connect(g); g.connect(c.destination); g.gain.setValueAtTime(.25, c.currentTime);
+        o.start(); o.stop(c.currentTime + .25); } catch (e) {}
+}
+async function conferirAvisos() {
+  if (document.querySelector('dialog[open]')) return;
+  try {
+    const r = await fetch('api.php?acao=avisos&desde=' + ultimoAviso, { cache: 'no-store' });
+    if (r.status === 401) { location.href = 'index.php'; return; }
+    const j = await r.json();
+    if (j.avisos && j.avisos.length) { j.avisos.forEach(toast); if (navigator.vibrate) navigator.vibrate([200, 100, 200]); bip(); }
+    ultimoAviso = Math.max(ultimoAviso, j.ultimo || 0);
+    if (j.versao && j.versao !== VERSAO_TELA) setTimeout(() => { if (!document.querySelector('dialog[open]')) location.reload(); }, j.avisos && j.avisos.length ? 2500 : 0);
+  } catch (e) {}
+}
+setInterval(conferirAvisos, 15000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') conferirAvisos(); });
+// no app Android: liga as notificações do celular (funcionam com o app fechado)
+if (window.NetPointApp && NetPointApp.ligarAvisos) NetPointApp.ligarAvisos(new URL('api.php', location.href).href, ultimoAviso);
 
 // ---- Ambulância ----
 async function socorroColetado(id) {

@@ -107,6 +107,7 @@ public class MainActivity extends Activity {
 
         pedirPermissoes();
         if (salvo != null) web.restoreState(salvo);
+        else if (getIntent() != null && getIntent().getStringExtra("link") != null) abrirLinkDoAviso(getIntent());
         else web.loadUrl(servidor);
     }
 
@@ -175,8 +176,20 @@ public class MainActivity extends Activity {
             if (Build.VERSION.SDK_INT >= 26) startForegroundService(i);
             else startService(i);
         } catch (Exception e) {
-            // sem permissão ou app em segundo plano: tenta de novo no próximo carregamento da página
+            // app em segundo plano: tenta de novo no próximo carregamento da página
         }
+    }
+
+    // toque numa notificação de aviso: abre a página do aviso
+    private void abrirLinkDoAviso(Intent intent) {
+        String link = intent != null ? intent.getStringExtra("link") : null;
+        if (link != null && web != null && !link.startsWith("http")) web.loadUrl(servidor + link.replaceFirst("^/", ""));
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        abrirLinkDoAviso(intent);
     }
 
     @Override
@@ -201,9 +214,8 @@ public class MainActivity extends Activity {
     private class Ponte {
         @JavascriptInterface
         public void iniciarRastreio(String csrf, String urlApi) {
-            Intent i = new Intent(MainActivity.this, RastreioService.class);
-            i.putExtra("csrf", csrf);
-            i.putExtra("api", urlApi);
+            Intent i = new Intent(MainActivity.this, NetPointService.class)
+                    .putExtra("acao", "rastreio_on").putExtra("csrf", csrf).putExtra("api", urlApi);
             runOnUiThread(() -> {
                 if (temLocalizacao()) iniciarServico(i);
                 else { rastreioPendente = i; pedirPermissoes(); }
@@ -212,12 +224,24 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void pararRastreio() {
-            runOnUiThread(() -> stopService(new Intent(MainActivity.this, RastreioService.class)));
+            if (NetPointService.ligado) runOnUiThread(() -> NetPointService.comando(MainActivity.this, "rastreio_off", null, null, 0));
+        }
+
+        /** Liga as notificações de avisos (funcionam com o app fechado). */
+        @JavascriptInterface
+        public void ligarAvisos(String urlApi, double ultimoAviso) {
+            runOnUiThread(() -> NetPointService.comando(MainActivity.this, "avisos", urlApi, null, (long) ultimoAviso));
+        }
+
+        /** Saiu do sistema: desliga tudo. */
+        @JavascriptInterface
+        public void desligarAvisos() {
+            runOnUiThread(() -> NetPointService.comando(MainActivity.this, "parar", null, null, 0));
         }
 
         @JavascriptInterface
         public boolean rastreando() {
-            return RastreioService.ativo;
+            return NetPointService.rastreando;
         }
     }
 }

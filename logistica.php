@@ -626,6 +626,14 @@ function criar_rotas_por_motoboy(string $data, array $porMoto): array {
     } catch (Throwable $ex) { $pdo->rollBack(); throw $ex; }
     // a sequência de entrega é a do número da lista (.txt): 1, 2, 3...
     foreach ($rotas as $rid) recalcular_sacas_rota($rid);
+    // avisa cada motoboy que a rota do dia está disponível
+    $s = db()->prepare("SELECT r.motoboy_id, r.data, COUNT(p.id) n, COALESCE(SUM(p.pacotes),0) pac, (SELECT COUNT(*) FROM sacas WHERE rota_id = r.id) cx
+                        FROM rotas r LEFT JOIN paradas p ON p.rota_id = r.id WHERE r.id = ? GROUP BY r.id");
+    foreach ($rotas as $rid) {
+        $s->execute([$rid]); $x = $s->fetch();
+        if ($x) avisar('motoboy', (int)$x['motoboy_id'], 'rota_disponivel', '📦 Sua rota de ' . data_br($x['data']) . ' está disponível',
+                       "{$x['n']} entregas, {$x['pac']} pacotes em {$x['cx']} caixas. Vá até o CD.", 'motoboy.php', 'alta');
+    }
     return $rotas;
 }
 
@@ -872,11 +880,15 @@ function acionar_ambulancia(int $rotaId, int $para): array {
         $pdo->commit();
     } catch (Throwable $ex) { $pdo->rollBack(); throw $ex; }
     foreach ([$rotaId, $dest] as $rid) { recalcular_sacas_rota($rid); atualizar_status_rota($rid); }
+    $pac = array_sum(array_column($pend, 'pacotes'));
+    avisar('motoboy', $para, 'ambulancia', '🚑 Ambulância: busque as entregas de ' . $r['nome'], count($pend) . " entregas, $pac pacotes. Toque para ver onde ele está.", 'motoboy.php', 'alta');
+    avisar('motoboy', (int)$r['motoboy_id'], 'ambulancia_origem', '🚑 Suas entregas pendentes passaram para ' . nome_usuario($para), 'Espere ele chegar para entregar os pacotes.', 'motoboy.php', 'alta');
+    db()->prepare("UPDATE pedidos_socorro SET status = 'atendido' WHERE motoboy_id = ? AND status = 'aberto'")->execute([$r['motoboy_id']]);
     return ['socorro' => $sid, 'rota_destino' => $dest, 'entregas' => count($pend), 'pacotes' => array_sum(array_column($pend, 'pacotes'))];
 }
 
 /** Desfaz a ambulância enquanto o socorrista não pegou os pacotes: as pendentes voltam para o motoboy original. */
-function cancelar_ambulancia(int $sid): void {
+function cancelar_ambulancia(int $sid, bool $avisarSocorrista = true): void {
     $pdo = db();
     $s = $pdo->prepare("SELECT * FROM socorros WHERE id = ?");
     $s->execute([$sid]);
@@ -899,6 +911,8 @@ function cancelar_ambulancia(int $sid): void {
         $pdo->commit();
     } catch (Throwable $ex) { $pdo->rollBack(); throw $ex; }
     foreach ([$x['rota_origem'], $x['rota_destino']] as $rid) { recalcular_sacas_rota((int)$rid); atualizar_status_rota((int)$rid); }
+    if ($avisarSocorrista) avisar('motoboy', (int)$x['para_motoboy'], 'ambulancia_cancelada', '🚑 Ambulância cancelada', 'Não precisa mais buscar as entregas de ' . nome_usuario((int)$x['de_motoboy']) . '.', 'motoboy.php', 'alta');
+    avisar('motoboy', (int)$x['de_motoboy'], 'ambulancia_cancelada', '🚑 Suas entregas voltaram para você', 'A ambulância foi cancelada.', 'motoboy.php', 'alta');
 }
 
 /**
@@ -1017,6 +1031,8 @@ function adicionar_entregas_ao_motoboy(string $data, array $idsEntregas, int $mi
     } catch (Throwable $ex) { $pdo->rollBack(); throw $ex; }
     recalcular_sacas_rota($rid);
     atualizar_status_rota($rid);
+    avisar('motoboy', $mid, 'entregas_adicionadas', '➕ ' . count($ents) . ' entregas novas na sua rota',
+           'Entraram no fim da rota (' . array_sum(array_column($ents, 'pacotes')) . ' pacotes). Confira as caixas para pegar no CD.', 'motoboy.php', 'alta');
     return count($ents);
 }
 
@@ -1052,4 +1068,77 @@ function cancelar_importacao(string $data): int {
         $pdo->commit();
     } catch (Throwable $ex) { $pdo->rollBack(); throw $ex; }
     return count($anteriores);
+}
+
+// =====================================================================
+// Avisos (notificações) e pedidos de socorro
+// =====================================================================
+function garantir_schema_v12(): void {
+    $flag = __DIR__ . '/.schema_v12';
+    if (file_exists($flag)) return;
+    db()->exec("CREATE TABLE IF NOT EXISTS avisos (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        para_tipo ENUM('admin','motoboy') NOT NULL,
+        para_id INT NULL,
+        tipo VARCHAR(30) NOT NULL,
+        titulo VARCHAR(150) NOT NULL,
+        texto VARCHAR(500) NULL,
+        link VARCHAR(255) NULL,
+        prioridade ENUM('normal','alta') NOT NULL DEFAULT 'normal',
+        criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX (para_tipo, para_id, id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    db()->exec("CREATE TABLE IF NOT EXISTS pedidos_socorro (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        motoboy_id INT NOT NULL,
+        rota_id INT NULL,
+        motivo VARCHAR(255) NOT NULL,
+        lat DECIMAL(10,7) NULL,
+        lng DECIMAL(10,7) NULL,
+        status ENUM('aberto','atendido','cancelado') NOT NULL DEFAULT 'aberto',
+        criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX (status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    db()->exec("ALTER TABLE socorros MODIFY status ENUM('aguardando','coletado','cancelado','recusado') NOT NULL DEFAULT 'aguardando'");
+    if (!db()->query("SHOW COLUMNS FROM socorros LIKE 'motivo_recusa'")->fetch())
+        db()->exec("ALTER TABLE socorros ADD COLUMN motivo_recusa VARCHAR(255) NULL");
+    @touch($flag);
+}
+garantir_schema_v12();
+
+/** Cria um aviso. $paraId null = todos os admins. */
+function avisar(string $paraTipo, ?int $paraId, string $tipo, string $titulo, ?string $texto = null, ?string $link = null, string $prioridade = 'normal'): void {
+    try {
+        db()->prepare("INSERT INTO avisos (para_tipo, para_id, tipo, titulo, texto, link, prioridade) VALUES (?,?,?,?,?,?,?)")
+            ->execute([$paraTipo, $paraId, $tipo, mb_substr($titulo, 0, 150), $texto !== null ? mb_substr($texto, 0, 500) : null, $link, $prioridade]);
+    } catch (Throwable $ex) { /* aviso nunca pode quebrar a ação principal */ }
+}
+
+function nome_usuario(int $id): string {
+    $s = db()->prepare("SELECT nome FROM usuarios WHERE id = ?");
+    $s->execute([$id]);
+    return (string)($s->fetchColumn() ?: '?');
+}
+
+/** O socorrista recusou: as entregas voltam para o motoboy original e o admin é avisado para escolher outro. */
+function recusar_ambulancia(int $sid, int $motoboyId, string $motivo): void {
+    $s = db()->prepare("SELECT * FROM socorros WHERE id = ? AND para_motoboy = ?");
+    $s->execute([$sid, $motoboyId]);
+    $x = $s->fetch();
+    if (!$x || $x['status'] !== 'aguardando') throw new RuntimeException('Esta ambulância não está mais aguardando.');
+    cancelar_ambulancia($sid, false);
+    db()->prepare("UPDATE socorros SET status = 'recusado', motivo_recusa = ? WHERE id = ?")->execute([mb_substr($motivo, 0, 255), $sid]);
+    $quem = nome_usuario($motoboyId); $de = nome_usuario((int)$x['de_motoboy']);
+    avisar('admin', null, 'ambulancia_recusada', "🚑 $quem recusou a ambulância", "Socorro de $de. Motivo: $motivo. Escolha outro motoboy.", 'rota.php?id=' . (int)$x['rota_origem'] . '#ambulancia', 'alta');
+}
+
+/** "Versão" do que o motoboy vê hoje: muda quando a rota, as paradas ou uma ambulância mudam. */
+function versao_motoboy(int $uid): string {
+    $hoje = date('Y-m-d');
+    $s = db()->prepare("SELECT CONCAT_WS('|',
+        (SELECT GROUP_CONCAT(CONCAT(r.id, ':', r.motoboy_id, ':', (SELECT COUNT(*) FROM paradas p WHERE p.rota_id = r.id), ':', (SELECT COUNT(*) FROM paradas p WHERE p.rota_id = r.id AND p.status = 'pendente')) ORDER BY r.id) FROM rotas r WHERE r.motoboy_id = ? AND r.data = ?),
+        (SELECT GROUP_CONCAT(CONCAT(x.id, x.status) ORDER BY x.id) FROM socorros x WHERE (x.para_motoboy = ? OR x.de_motoboy = ?) AND x.data = ?),
+        (SELECT GROUP_CONCAT(CONCAT(ps.id, ps.status)) FROM pedidos_socorro ps WHERE ps.motoboy_id = ? AND DATE(ps.criado_em) = ?))");
+    $s->execute([$uid, $hoje, $uid, $uid, $hoje, $uid, $hoje]);
+    return md5((string)$s->fetchColumn());
 }

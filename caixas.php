@@ -27,7 +27,7 @@ $totPac = array_sum(array_column($caixas, 'pacotes'));
 
 topo('Caixas do dia', 'rotas');
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=21">
+<link rel="stylesheet" href="assets/sacas.css?v=22">
 <div class="cabecalho-rota">
   <div>
     <a href="rotas.php?data=<?= e($data) ?>" class="voltar nao-imprimir">← Rotas</a>

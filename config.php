@@ -128,7 +128,7 @@ function topo(string $titulo, string $ativo = '', bool $mapa = false): void {
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <?php endif; ?>
-<link rel="stylesheet" href="assets/style.css?v=5">
+<link rel="stylesheet" href="assets/style.css?v=6">
 </head>
 <body>
 <?php if ($u && $u['tipo'] === 'admin'): ?>
@@ -140,9 +140,56 @@ function topo(string $titulo, string $ativo = '', bool $mapa = false): void {
     <a href="motoboys.php" class="<?= $ativo === 'motoboys' ? 'ativo' : '' ?>">Motoboys</a>
     <a href="financeiro.php" class="<?= $ativo === 'financeiro' ? 'ativo' : '' ?>">Financeiro</a>
     <a href="senha.php" class="<?= $ativo === 'senha' ? 'ativo' : '' ?>">Minha senha</a>
+    <button type="button" id="btn-sino" class="sino" title="Notificações no computador" onclick="pedirNotificacao()">🔔</button>
     <a href="logout.php">Sair</a>
   </nav>
 </header>
+<?php
+    // pedidos de socorro abertos: faixa vermelha em todas as páginas do admin
+    $pedidos = [];
+    try { $pedidos = db()->query("SELECT ps.*, u.nome FROM pedidos_socorro ps JOIN usuarios u ON u.id = ps.motoboy_id WHERE ps.status = 'aberto' ORDER BY ps.id")->fetchAll(); } catch (Throwable $ex) {}
+    foreach ($pedidos as $pd): ?>
+  <div class="faixa-sos">🆘 <b><?= e($pd['nome']) ?></b> pediu socorro às <?= hora_br($pd['criado_em']) ?> — <?= e($pd['motivo']) ?>
+    <?php if ($pd['rota_id']): ?><a class="btn pequeno" href="rota.php?id=<?= (int)$pd['rota_id'] ?>#ambulancia">Chamar ambulância</a><?php endif; ?>
+    <?php if ($pd['lat']): ?><a class="btn pequeno" target="_blank" href="https://www.google.com/maps?q=<?= e($pd['lat']) ?>,<?= e($pd['lng']) ?>">Ver no mapa</a><?php endif; ?>
+    <button type="button" class="btn pequeno" onclick="resolverPedido(<?= (int)$pd['id'] ?>)">Resolvido</button>
+  </div>
+<?php endforeach; ?>
+<div id="toasts" class="toasts" aria-live="polite"></div>
+<script>
+(() => {
+  const CSRF_ADM = <?= json_encode(csrf_token()) ?>;
+  let ultimo = null;
+  const sino = document.getElementById('btn-sino');
+  const marcaSino = () => { if (!('Notification' in window)) { sino.hidden = true; return; } sino.classList.toggle('ligado', Notification.permission === 'granted'); };
+  window.pedirNotificacao = async () => { if ('Notification' in window) { await Notification.requestPermission(); marcaSino(); } };
+  window.resolverPedido = async id => {
+    const fd = new FormData(); fd.append('acao', 'resolver_pedido'); fd.append('pedido_id', id);
+    await fetch('api.php', { method: 'POST', body: fd, headers: { 'X-CSRF': CSRF_ADM } }); location.reload();
+  };
+  function bip() { try { const c = new (window.AudioContext || window.webkitAudioContext)(); const o = c.createOscillator(), g = c.createGain(); o.frequency.value = 880; o.connect(g); g.connect(c.destination); g.gain.setValueAtTime(.25, c.currentTime); o.start(); o.stop(c.currentTime + .3); } catch (e) {} }
+  function mostrar(a) {
+    const t = document.createElement(a.link ? 'a' : 'div');
+    t.className = 'toast' + (a.prioridade === 'alta' ? ' alta' : ''); if (a.link) t.href = a.link;
+    t.innerHTML = '<b></b><span></span>'; t.querySelector('b').textContent = a.titulo; t.querySelector('span').textContent = a.texto || '';
+    document.getElementById('toasts').prepend(t); setTimeout(() => t.remove(), 15000);
+    if ('Notification' in window && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
+      const n = new Notification(a.titulo, { body: a.texto || '', icon: 'assets/icone-192.png', tag: 'np' + a.id });
+      n.onclick = () => { window.focus(); if (a.link) location.href = a.link; };
+    }
+  }
+  async function conferir() {
+    try {
+      const r = await fetch('api.php?acao=avisos&desde=' + (ultimo ?? 0), { cache: 'no-store' });
+      if (!r.ok) return;
+      const j = await r.json();
+      if (ultimo !== null && j.avisos.length) { j.avisos.forEach(mostrar); bip(); if (j.avisos.some(a => a.tipo === 'pedido_socorro')) setTimeout(() => location.reload(), 1500); }
+      ultimo = j.ultimo;
+    } catch (e) {}
+  }
+  marcaSino(); conferir(); setInterval(conferir, 15000);
+})();
+</script>
 <?php endif; ?>
 <main class="<?= ($ativo === 'painel' || ($u && $u['tipo'] === 'motoboy' && $ativo === '')) ? 'cheio' : 'conteudo' ?>">
 <?php

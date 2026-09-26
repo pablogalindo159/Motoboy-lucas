@@ -66,6 +66,8 @@ case 'status_parada':
     db()->prepare("UPDATE paradas SET status = ?, motivo = ?, finalizado_em = NOW() WHERE id = ?")
         ->execute([$status, $status === 'falhou' ? mb_substr(trim($_POST['motivo'] ?? ''), 0, 255) : null, $p['id']]);
     atualizar_status_rota((int)$p['rota_id']);
+    $st = db()->prepare("SELECT status FROM rotas WHERE id = ?"); $st->execute([$p['rota_id']]);
+    if ($st->fetchColumn() === 'finalizada') avisar('admin', null, 'rota_concluida', '✅ ' . $u['nome'] . ' concluiu a rota', null, 'rota.php?id=' . (int)$p['rota_id']);
     responder(['ok' => true]);
 
 // ---------- MOTOBOY: marcar saca coletada (toque de novo desmarca) ----------
@@ -178,7 +180,68 @@ case 'socorro_coletado':
     $u = exigir('motoboy', true);
     $s = db()->prepare("UPDATE socorros SET status = 'coletado', coletado_em = NOW() WHERE id = ? AND para_motoboy = ? AND status = 'aguardando'");
     $s->execute([(int)($_POST['socorro_id'] ?? 0), $u['id']]);
+    if ($s->rowCount()) {
+        $x = db()->prepare("SELECT de_motoboy, rota_origem FROM socorros WHERE id = ?"); $x->execute([(int)$_POST['socorro_id']]); $x = $x->fetch();
+        avisar('motoboy', (int)$x['de_motoboy'], 'socorro_coletado', '🚑 ' . $u['nome'] . ' pegou os pacotes', 'Obrigado! Pode encerrar por hoje.', 'motoboy.php');
+        avisar('admin', null, 'socorro_coletado', '🚑 ' . $u['nome'] . ' pegou os pacotes de ' . nome_usuario((int)$x['de_motoboy']), null, 'rota.php?id=' . (int)$x['rota_origem']);
+    }
     responder(['ok' => true]);
+
+// ---------- MOTOBOY: recusar a ambulância (com motivo) ----------
+case 'socorro_recusar':
+    $u = exigir('motoboy', true);
+    $motivo = trim($_POST['motivo'] ?? '');
+    if ($motivo === '') responder(['erro' => 'Escreva o motivo.'], 422);
+    try { recusar_ambulancia((int)($_POST['socorro_id'] ?? 0), $u['id'], $motivo); }
+    catch (Throwable $ex) { responder(['erro' => $ex->getMessage()], 409); }
+    responder(['ok' => true]);
+
+// ---------- MOTOBOY: pedir socorro ao admin ----------
+case 'pedir_socorro':
+    $u = exigir('motoboy', true);
+    $motivo = mb_substr(trim($_POST['motivo'] ?? ''), 0, 255);
+    if ($motivo === '') responder(['erro' => 'Escolha o motivo.'], 422);
+    $s = db()->prepare("SELECT id FROM rotas WHERE motoboy_id = ? AND data = ? ORDER BY id LIMIT 1");
+    $s->execute([$u['id'], date('Y-m-d')]);
+    $rid = (int)$s->fetchColumn() ?: null;
+    $lat = is_numeric($_POST['lat'] ?? null) ? (float)$_POST['lat'] : null; $lng = is_numeric($_POST['lng'] ?? null) ? (float)$_POST['lng'] : null;
+    if ($lat && $lng) db()->prepare("UPDATE usuarios SET lat = ?, lng = ?, ultima_localizacao = NOW() WHERE id = ?")->execute([$lat, $lng, $u['id']]);
+    db()->prepare("INSERT INTO pedidos_socorro (motoboy_id, rota_id, motivo, lat, lng) VALUES (?,?,?,?,?)")->execute([$u['id'], $rid, $motivo, $lat, $lng]);
+    avisar('admin', null, 'pedido_socorro', '🆘 ' . $u['nome'] . ' pediu socorro', "Motivo: $motivo. Toque para chamar a ambulância.", $rid ? "rota.php?id=$rid#ambulancia" : 'admin.php', 'alta');
+    responder(['ok' => true]);
+
+case 'resolver_pedido':
+    exigir('admin', true);
+    db()->prepare("UPDATE pedidos_socorro SET status = 'atendido' WHERE id = ?")->execute([(int)($_POST['pedido_id'] ?? 0)]);
+    responder(['ok' => true]);
+
+case 'cancelar_pedido_socorro':
+    $u = exigir('motoboy', true);
+    db()->prepare("UPDATE pedidos_socorro SET status = 'cancelado' WHERE motoboy_id = ? AND status = 'aberto'")->execute([$u['id']]);
+    avisar('admin', null, 'pedido_socorro', '✅ ' . $u['nome'] . ' cancelou o pedido de socorro', 'Resolveu sozinho.', 'admin.php');
+    responder(['ok' => true]);
+
+// ---------- avisos (motoboy e admin): novos desde o último que o aparelho já viu ----------
+case 'avisos':
+    $u = usuario();
+    if (!$u) { http_response_code(401); echo json_encode(['erro' => 'Entre de novo.']); exit; }
+    $desde = (int)($_GET['desde'] ?? 0);
+    $filtro = $u['tipo'] === 'admin' ? "para_tipo = 'admin'" : "para_tipo = 'motoboy' AND para_id = " . (int)$u['id'];
+    $ultimo = (int)db()->query("SELECT COALESCE(MAX(id), 0) FROM avisos WHERE $filtro")->fetchColumn();
+    $lista = [];
+    if ($desde > 0) {
+        $s = db()->prepare("SELECT id, tipo, titulo, texto, link, prioridade, criado_em FROM avisos WHERE $filtro AND id > ? ORDER BY id LIMIT 20");
+        $s->execute([$desde]);
+        $lista = $s->fetchAll();
+    }
+    $out = ['ultimo' => $ultimo, 'avisos' => $lista];
+    if ($u['tipo'] === 'motoboy') {
+        // "versão" do que aparece na tela: se mudar, a tela se atualiza sozinha
+        $out['versao'] = versao_motoboy((int)$u['id']);
+    } else {
+        $out['socorros_abertos'] = (int)db()->query("SELECT COUNT(*) FROM pedidos_socorro WHERE status = 'aberto'")->fetchColumn();
+    }
+    responder($out);
 
 default:
     responder(['erro' => 'Ação desconhecida'], 400);

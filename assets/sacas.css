@@ -256,3 +256,16 @@ tr.achada td { background: #EEFBD9; }
 .passar-sem .link { background: none; border: 0; padding: 0; color: var(--azul); text-decoration: underline; font: inherit; cursor: pointer; }
 .chk-sem { width: auto; accent-color: #000; vertical-align: middle; }
 .controles-envio { display: flex; gap: .5rem; flex-wrap: wrap; margin: .6rem 0; }
+
+/* avisos ao vivo e socorro */
+.toasts { position: fixed; top: calc(env(safe-area-inset-top, 0px) + .5rem); left: .5rem; right: .5rem; z-index: 1000; display: flex; flex-direction: column; gap: .4rem; pointer-events: none; }
+.toast { pointer-events: auto; background: #000; color: #fff; border-left: 6px solid var(--marca); border-radius: 12px; padding: .7rem .9rem; box-shadow: 0 6px 20px rgba(0,0,0,.35); animation: entra .25s ease-out; }
+.toast.alta { border-left-color: var(--vermelho); }
+.toast b { display: block; }
+.toast span { font-size: .9rem; color: #D5DAD3; }
+@keyframes entra { from { transform: translateY(-10px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (min-width: 700px) { .toasts { left: auto; right: 1rem; top: auto; bottom: 1rem; width: 360px; flex-direction: column-reverse; } }
+.btn-sos { background: var(--vermelho); color: #fff; border: 0; border-radius: 10px; font-size: 1.3rem; padding: .3rem .55rem; cursor: pointer; }
+.aviso-sos { background: #FBE4E1; color: var(--vermelho); padding: .8rem 1rem; font-weight: 600; display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; border-bottom: 1px solid #E3B8B3; }
+.link-recusar { margin-top: .7rem; background: none; border: 0; color: #fff; text-decoration: underline; font: inherit; cursor: pointer; padding: 0; }
+.sos-admin { display: flex; flex-wrap: wrap; gap: .5rem .8rem; align-items: center; }

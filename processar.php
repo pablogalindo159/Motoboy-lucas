@@ -8,7 +8,7 @@ $s->execute([$data]);
 $anteriores = (int)$s->fetchColumn();
 topo('Montando rotas', 'rotas');
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=21">
+<link rel="stylesheet" href="assets/sacas.css?v=22">
 <h1>Localizando as entregas de <?= data_br($data) ?></h1>
 <div class="cartao processo">
   <p id="etapa">Localizando endereços no mapa…</p>
