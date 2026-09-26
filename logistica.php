@@ -69,7 +69,8 @@ function ler_lista_entregas(string $texto): array {
 
 // ---------- bairros atendidos: a busca de endereço só aceita estes ----------
 const BAIRROS_PADRAO = [
-    'Pinhais'  => ['Weissópolis', 'Vargem Grande', 'Guarituba', 'Maria Antonieta', 'Planta Guilherme Weiss'],
+    'Pinhais'    => ['Weissópolis', 'Vargem Grande', 'Maria Antonieta', 'Planta Guilherme Weiss'],
+    'Piraquara'  => ['Guarituba'],
     'Curitiba' => ['Cajuru', 'Capão da Imbuia', 'Tarumã', 'Cristo Rei', 'Jardim Botânico', 'Alto da Rua XV'],
 ];
 function bairros_atendidos(): array {
@@ -322,7 +323,7 @@ function quadrantes_ativos(): array {
     return $q;
 }
 
-// Região de busca de endereços: só em volta das zonas (~1 km de folga); sem zonas, a região metropolitana.
+// Região de busca de endereços: em volta das zonas (~3 km de folga); sem zonas, a região metropolitana.
 function regiao_busca(): array {
     static $r = null;
     if ($r !== null) return $r;
@@ -330,7 +331,7 @@ function regiao_busca(): array {
     foreach (db()->query("SELECT pontos FROM quadrantes WHERE ativo = 1")->fetchAll(PDO::FETCH_COLUMN) as $j)
         foreach (json_decode($j, true) ?: [] as $p) { $lat[] = $p[0]; $lng[] = $p[1]; }
     if (!$lat) return $r = REGIAO_BUSCA;
-    $m = 0.01; // ~1 km de folga: os endereços ficam sempre perto das zonas
+    $m = 0.03; // ~3 km de folga: cobre bairros atendidos que passam da borda das zonas (ex.: Guarituba); o filtro de bairro evita rua errada
     return $r = [min($lng) - $m, max($lat) + $m, max($lng) + $m, min($lat) - $m];
 }
 
@@ -1229,3 +1230,21 @@ function fcm_enviar(string $paraTipo, ?int $paraId, array $aviso): int {
     }
     return $ok;
 }
+
+// Correção: Guarituba é bairro de Piraquara (a lista antiga colocava em Pinhais)
+function garantir_schema_v14(): void {
+    $flag = __DIR__ . '/.schema_v14';
+    if (file_exists($flag)) return;
+    $lista = json_decode((string)cfg('bairros_atendidos', ''), true);
+    if (is_array($lista) && isset($lista['Pinhais'])) {
+        $antes = count($lista['Pinhais']);
+        $lista['Pinhais'] = array_values(array_filter($lista['Pinhais'], fn($b) => !_mesmo_lugar($b, 'Guarituba')));
+        if (count($lista['Pinhais']) !== $antes) {
+            $lista['Piraquara'] = array_values(array_unique(array_merge($lista['Piraquara'] ?? [], ['Guarituba'])));
+            cfg_salvar('bairros_atendidos', json_encode($lista, JSON_UNESCAPED_UNICODE));
+        }
+    }
+    db()->exec("DELETE FROM geocache WHERE status = 'fora_bairro'"); // procura de novo quem tinha sido barrado
+    @touch($flag);
+}
+garantir_schema_v14();
