@@ -90,7 +90,7 @@ topo('Minhas entregas');
 $sacasColetadas = count(array_filter($sacas, fn($x) => $x['coletada']));
 $corRota = $rota['cor'] ?? null;
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=26">
+<link rel="stylesheet" href="assets/sacas.css?v=27">
 <div class="app-moto">
   <header class="moto-topo">
     <img src="assets/icone.svg" alt="" width="40" height="40" class="icone-topo">
@@ -238,6 +238,14 @@ $corRota = $rota['cor'] ?? null;
       </button>
       <?php if (count($pendentes) > 1): ?>
         <a class="btn largo" href="<?= e(link_rota_completa($pendentes)) ?>" target="_blank" rel="noopener">Fazer a rota completa (<?= min(10, count($pendentes)) ?> próximas paradas)</a>
+      <?php endif; ?>
+      <?php if (count($pendentes) > 1): ?>
+        <a class="btn largo spoke" href="exportar_spoke.php?rota=<?= (int)$rota['id'] ?>" download>🗺️ Fazer a rota no Spoke (baixar planilha · <?= count($pendentes) ?> paradas)</a>
+        <details class="ajuda-spoke"><summary>Como importar no Spoke</summary>
+          <ol><li>Toque no botão acima: a planilha vai para <b>Downloads</b>.</li>
+              <li>Abra o <b>Spoke</b> → <b>Adicionar paradas</b> → <b>Importar planilha</b> (ou "Import spreadsheet").</li>
+              <li>Escolha o arquivo <b>spoke-…csv</b>. O número da entrega e os pacotes aparecem nas observações de cada parada.</li></ol>
+        </details>
       <?php endif; ?>
     </section>
     <?php else: ?>

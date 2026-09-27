@@ -43,7 +43,16 @@ case 'mover_parada':
     exigir('admin', true);
     db()->prepare("UPDATE paradas SET lat = ?, lng = ? WHERE id = ?")
         ->execute([(float)$_POST['lat'], (float)$_POST['lng'], (int)$_POST['id']]);
+    // arrastou para o lugar certo: o sistema aprende esse endereço para as próximas rotas
+    $s = db()->prepare("SELECT p.endereco, p.numero_casa, p.bairro, r.data FROM paradas p JOIN rotas r ON r.id = p.rota_id WHERE p.id = ?");
+    $s->execute([(int)$_POST['id']]);
+    if ($p = $s->fetch()) aprender_local($p['endereco'], (string)$p['numero_casa'], (float)$_POST['lat'], (float)$_POST['lng'], $p['bairro'], $p['data']);
     responder(['ok' => true]);
+
+// ---------- ADMIN: CEP -> endereço e ponto no mapa ----------
+case 'buscar_cep':
+    exigir('admin', true);
+    responder(buscar_cep((string)($_POST['cep'] ?? ''), (string)($_POST['numero'] ?? '')));
 
 // ---------- MOTOBOY: enviar posição ----------
 case 'localizacao':

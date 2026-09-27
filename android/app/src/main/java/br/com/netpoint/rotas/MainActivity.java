@@ -2,6 +2,10 @@ package br.com.netpoint.rotas;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.DownloadManager;
+import android.os.Environment;
+import android.webkit.URLUtil;
+import android.widget.Toast;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -58,6 +62,31 @@ public class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, false);
         web.addJavascriptInterface(new Ponte(), "NetPointApp");
+
+        // downloads (ex.: planilha do Spoke): salva em Downloads usando o login do app
+        web.setDownloadListener((url, userAgent, disposicao, tipo, tamanho) -> {
+            try {
+                if (Build.VERSION.SDK_INT < 29 && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 3);
+                    Toast.makeText(this, "Libere o acesso aos arquivos e toque de novo no botão", Toast.LENGTH_LONG).show();
+                    return;
+                }
+                String nome = URLUtil.guessFileName(url, disposicao, tipo);
+                DownloadManager.Request req = new DownloadManager.Request(Uri.parse(url));
+                String cookie = CookieManager.getInstance().getCookie(url);
+                if (cookie != null) req.addRequestHeader("Cookie", cookie);
+                req.addRequestHeader("User-Agent", userAgent);
+                req.setMimeType(tipo);
+                req.setTitle(nome);
+                req.setDescription("NetPoint Rotas");
+                req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                req.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, nome);
+                ((DownloadManager) getSystemService(DOWNLOAD_SERVICE)).enqueue(req);
+                Toast.makeText(this, "Baixando " + nome + " para Downloads", Toast.LENGTH_LONG).show();
+            } catch (Exception e) {
+                Toast.makeText(this, "Não foi possível baixar o arquivo", Toast.LENGTH_LONG).show();
+            }
+        });
 
         web.setWebViewClient(new WebViewClient() {
             @Override

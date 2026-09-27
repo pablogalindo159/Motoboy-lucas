@@ -301,3 +301,9 @@ tr.achada td { background: #EEFBD9; }
 .notif.nova.alta { border-left-color: var(--vermelho); }
 .filtros select { width: auto; border-radius: 99px; padding: .45rem .9rem; font-weight: 600; }
 .gps.desligado { color: #FFD666; }
+.mapa-corrigir { height: 60vh; min-height: 380px; cursor: crosshair; }
+a.btn.corrigir { margin-top: .3rem; }
+.btn.spoke { margin-top: .5rem; background: #fff; border: 2px solid #000; }
+.ajuda-spoke { margin-top: .4rem; font-size: .88rem; }
+.ajuda-spoke summary { cursor: pointer; color: var(--suave); }
+.ajuda-spoke ol { margin: .4rem 0 0; padding-left: 1.2rem; }

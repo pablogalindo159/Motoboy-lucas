@@ -123,13 +123,13 @@ function http_json(string $url, array $headers = []) {
  * $restringir = true: só aceita resultado nos bairros atendidos. Retorna ['lat','lng','bairro','status','fonte','consultou'].
  * Se a rua só existir em outro bairro: status = fora_bairro e bairro = onde foi achada.
  */
-function geo_consultar(string $rua, string $num, bool $restringir = true): array {
+function geo_consultar(string $rua, string $num, bool $restringir = true, ?string $cidadeCep = null): array {
     [$o, $n, $l, $s] = $restringir ? regiao_busca() : REGIAO_BUSCA;
     $vazio = ['lat' => null, 'lng' => null, 'bairro' => null, 'status' => 'nao_achado', 'fonte' => null, 'consultou' => false];
     $foraEm = null;
     $chave = trim((string)cfg('google_key', ''));
     if ($chave !== '') {
-        $cidades = $restringir ? array_keys(bairros_atendidos()) : [''];
+        $cidades = $cidadeCep ? [$cidadeCep] : ($restringir ? array_keys(bairros_atendidos()) : ['']);
         foreach ($cidades as $cid) {
             $j = http_json('https://maps.googleapis.com/maps/api/geocode/json?' . http_build_query([
                 'address' => trim("$rua, $num" . ($cid ? ", $cid" : '') . ", Paraná, Brasil", ', '), 'region' => 'br', 'language' => 'pt-BR',
@@ -153,7 +153,7 @@ function geo_consultar(string $rua, string $num, bool $restringir = true): array
     $base = ['format' => 'jsonv2', 'limit' => 10, 'addressdetails' => 1, 'countrycodes' => 'br', 'viewbox' => "$o,$n,$l,$s", 'bounded' => 1, 'state' => 'Paraná'];
     foreach ([trim("$num $rua"), $rua] as $i => $ruaBusca) {
         if ($i === 1) { if ($num === '') break; usleep(1100000); }
-        $j = http_json('https://nominatim.openstreetmap.org/search?' . http_build_query($base + ['street' => $ruaBusca]), $ua) ?: [];
+        $j = http_json('https://nominatim.openstreetmap.org/search?' . http_build_query($base + ['street' => $ruaBusca] + ($cidadeCep ? ['city' => $cidadeCep] : [])), $ua) ?: [];
         foreach ($j as $res) {
             $a = $res['address'] ?? [];
             $cidade = $a['city'] ?? $a['town'] ?? $a['municipality'] ?? null;
@@ -1339,4 +1339,39 @@ garantir_schema_v16();
 function avisos_nao_lidos(int $uid): int {
     $lido = (int)cfg('avisos_lidos_' . $uid, 0);
     return (int)db()->query("SELECT COUNT(*) FROM avisos WHERE para_tipo = 'admin' AND id > $lido")->fetchColumn();
+}
+
+// =====================================================================
+// Correção manual do local (CEP e/ou ponto no mapa): o sistema aprende o endereço
+// =====================================================================
+
+/** Grava o local certo de um endereço: vale para a lista do dia, para as rotas já criadas e para as próximas listas. */
+function aprender_local(string $rua, string $num, float $lat, float $lng, ?string $bairro, ?string $data = null): int {
+    $bairro = $bairro !== null && trim($bairro) !== '' ? mb_substr(trim($bairro), 0, 120) : null;
+    db()->prepare("REPLACE INTO geocache (chave, lat, lng, fonte, bairro, status) VALUES (?,?,?,'manual',?,'ok')")
+        ->execute([geo_chave($rua, $num), $lat, $lng, $bairro]);
+    // a mesma rua e número na lista do dia (e nos dias ainda não localizados)
+    $s = db()->prepare("UPDATE entregas SET lat = ?, lng = ?, bairro = COALESCE(?, bairro), geo_status = 'ok', geo_tentado = 1
+                        WHERE rua = ? AND numero_casa <=> ?" . ($data ? " AND data >= ?" : ""));
+    $s->execute(array_merge([$lat, $lng, $bairro, $rua, $num], $data ? [$data] : []));
+    $n = $s->rowCount();
+    // paradas das rotas já criadas com esse endereço (ainda não entregues)
+    db()->prepare("UPDATE paradas SET lat = ?, lng = ?, bairro = COALESCE(?, bairro) WHERE endereco = ? AND numero_casa <=> ? AND status = 'pendente'")
+        ->execute([$lat, $lng, $bairro, $rua, $num]);
+    return $n;
+}
+
+/** CEP -> endereço dos Correios (ViaCEP) e, se der, o ponto no mapa. */
+function buscar_cep(string $cep, string $numero = ''): array {
+    $cep = preg_replace('/\D/', '', $cep);
+    if (strlen($cep) !== 8) return ['erro' => 'CEP precisa ter 8 números.'];
+    $j = http_json("https://viacep.com.br/ws/$cep/json/");
+    if (!$j || !empty($j['erro'])) return ['erro' => 'CEP não encontrado nos Correios.'];
+    $out = ['cep' => $cep, 'rua' => $j['logradouro'] ?? '', 'bairro' => $j['bairro'] ?? '', 'cidade' => $j['localidade'] ?? '', 'uf' => $j['uf'] ?? ''];
+    if ($out['rua'] !== '') {
+        $g = geo_consultar($out['rua'], $numero, false, $out['cidade'] ?: null);
+        if ($g['lat'] === null && $numero !== '') $g = geo_consultar($out['rua'], '', false, $out['cidade'] ?: null);
+        if ($g['lat'] !== null) { $out['lat'] = $g['lat']; $out['lng'] = $g['lng']; }
+    }
+    return $out;
 }

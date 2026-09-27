@@ -76,7 +76,7 @@ $rotuloStatus = ['aberta' => 'Aguardando', 'em_andamento' => 'Em andamento', 'fi
 
 topo('Rotas', 'rotas');
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=26">
+<link rel="stylesheet" href="assets/sacas.css?v=27">
 <div class="cabecalho-rota"><h1>Rotas</h1>
   <div class="acoes">
     <a class="btn" href="cd.php">Posição do CD</a>
@@ -174,7 +174,8 @@ topo('Rotas', 'rotas');
           <td><?= (int)$it['pacotes'] ?></td>
           <td><?php if ($it['sem_local']): ?><small class="txt-alerta">não achado no mapa</small>
               <?php elseif ($it['fora']): ?><small class="txt-erro">⚠ <?= e($it['zona']) ?></small>
-              <?php else: ?><small><?= e($it['zona'] ?? '—') ?></small><?php endif; ?></td>
+              <?php else: ?><small><?= e($it['zona'] ?? '—') ?></small><?php endif; ?>
+              <?php if ($it['sem_local'] || $it['fora']): ?><a class="btn pequeno corrigir" href="corrigir_local.php?id=<?= (int)$it['id'] ?>">📍 Corrigir</a><?php endif; ?></td>
           <td><?php if ($it['motoboy']): ?><span class="bolinha" style="background:<?= e($it['cor'] ?: '#999') ?>"></span><?= e($it['motoboy']) ?>
               <?php else: ?><span class="selo sem-moto">Sem motoboy</span><?php endif; ?></td>
           <td><?= $it['status'] ? '<span class="selo ' . e($it['status']) . '">' . $rotStatus[$it['status']] . '</span>' : '—' ?></td>
