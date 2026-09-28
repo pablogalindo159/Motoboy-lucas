@@ -312,3 +312,7 @@ a.btn.corrigir { margin-top: .3rem; }
 .novo-quad .dica { margin: .2rem 0 .4rem; }
 .mapa-quad.desenhando { outline: 3px solid var(--marca); cursor: crosshair; }
 .rotulo-quad .np-quad-moto { display: block; font-size: 10px; font-weight: 600; text-align: center; }
+.destino-excesso { display: flex; flex-wrap: wrap; gap: .4rem; margin: .2rem 0 .5rem 1.6rem; }
+.destino-excesso select { width: auto; max-width: 100%; }
+.acima-max .confirmado { color: var(--verde); font-weight: 600; margin: .3rem 0; }
+.acima-max .decisao > .btn { margin-top: .3rem; }

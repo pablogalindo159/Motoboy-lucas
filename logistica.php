@@ -1394,3 +1394,58 @@ function quadrantes_para_mapa(?string $data = null): array {
     return array_map(fn($q) => ['id' => (int)$q['id'], 'nome' => $q['nome'], 'cor' => $q['cor'], 'pontos' => $q['pontos'],
                                 'motoboys' => array_keys($quem[mb_strtoupper($q['nome'], 'UTF-8')] ?? [])], quadrantes_ativos());
 }
+
+// =====================================================================
+// Vizinhos (quadrantes que fazem divisa) e passagem manual do excesso
+// =====================================================================
+
+/** Menor distância (m) entre dois polígonos; 0 se encostam/sobrepõem. */
+function distancia_poligonos(array $a, array $b): float {
+    $min = INF;
+    foreach ($a as $p) { $d = dentro_poligono($p, $b) ? 0.0 : distancia_borda($p, $b); if ($d < $min) $min = $d; if ($min == 0.0) return 0.0; }
+    foreach ($b as $p) { $d = dentro_poligono($p, $a) ? 0.0 : distancia_borda($p, $a); if ($d < $min) $min = $d; if ($min == 0.0) return 0.0; }
+    return $min;
+}
+
+/** Para cada quadrante, os que fazem divisa com ele (até ~200 m, por causa das frestas entre as zonas). */
+function quadrantes_vizinhos(float $folgaM = 200): array {
+    static $cache = null;
+    if ($cache !== null) return $cache;
+    $qs = array_values(array_filter(quadrantes_ativos(), fn($q) => count($q['pontos']) >= 3));
+    $viz = [];
+    foreach ($qs as $q) $viz[(int)$q['id']] = [];
+    for ($i = 0; $i < count($qs); $i++) for ($j = $i + 1; $j < count($qs); $j++) {
+        if (distancia_poligonos($qs[$i]['pontos'], $qs[$j]['pontos']) <= $folgaM) {
+            $viz[(int)$qs[$i]['id']][] = (int)$qs[$j]['id'];
+            $viz[(int)$qs[$j]['id']][] = (int)$qs[$i]['id'];
+        }
+    }
+    return $cache = $viz;
+}
+
+/**
+ * Passa as entregas de $de mais próximas do quadrante de destino para $para,
+ * até somar pelo menos $qtd pacotes. Retorna as trocas feitas.
+ */
+function passar_excesso(array &$pm, int $de, int $para, int $qtd, array $poliAlvo): array {
+    if (!isset($pm[$de], $pm[$para]) || $qtd <= 0) return [];
+    $cand = [];
+    foreach ($pm[$de]['entregas'] as $k => $e) {
+        if ($e['lat'] === null) continue;
+        $p = [(float)$e['lat'], (float)$e['lng']];
+        $cand[$k] = dentro_poligono($p, $poliAlvo) ? 0.0 : distancia_borda($p, $poliAlvo);
+    }
+    asort($cand);
+    $movidas = []; $soma = 0;
+    foreach (array_keys($cand) as $k) {
+        if ($soma >= $qtd) break;
+        $e = $pm[$de]['entregas'][$k];
+        unset($pm[$de]['entregas'][$k]);
+        $e['movida_de'] = $de;
+        $pm[$para]['entregas'][] = $e;
+        $soma += (int)$e['pacotes'];
+        $movidas[] = ['entrega' => (int)$e['entrega'], 'de' => $de, 'para' => $para, 'pacotes' => (int)$e['pacotes']];
+    }
+    $pm[$de]['entregas'] = array_values($pm[$de]['entregas']);
+    return $movidas;
+}

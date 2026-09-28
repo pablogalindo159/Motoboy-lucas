@@ -29,6 +29,15 @@ foreach ($grupos as &$g) {
 unset($g);
 $nomeMoto = array_column($motoboys, 'nome', 'id');
 
+// passar o excesso para um quadrante vizinho que estava em "Não distribuir": o motoboy escolhido ali já fica com o quadrante
+$destQ = array_map('intval', (array)($_REQUEST['destino_quad'] ?? []));
+$destM = array_map('intval', (array)($_REQUEST['destino_moto'] ?? []));
+foreach ($destQ as $midOrig => $qid) {
+    if (($_REQUEST['excesso'][$midOrig] ?? '') !== 'passar' || empty($destM[$midOrig])) continue;
+    foreach ($grupos as &$g) if ($g['chave'] === "q$qid" && !$g['motoboys'] && isset($nomeMoto[$destM[$midOrig]])) $g['motoboys'] = [$destM[$midOrig]];
+    unset($g);
+}
+
 // quadrante com mais de um motoboy: divide pela numeração (caixas inteiras, pacotes iguais)
 $gruposDist = []; $divisao = [];
 $partirCaixa = !empty($_REQUEST['partir_caixa']);
@@ -62,16 +71,55 @@ $equilibrar = !isset($_REQUEST['equilibrar']) || $_REQUEST['equilibrar'] === '1'
 // quadrantes que passam do máximo: pergunta se fica tudo com o motoboy ou se o excesso vai para outro
 $acimaMax = [];
 foreach ($pm as $mid => $m) if ($lim[$mid]['max'] !== null && $m['pac_quadrante'] > $lim[$mid]['max']) $acimaMax[$mid] = $m['pac_quadrante'] - $lim[$mid]['max'];
-$decisao = [];
+// quadrantes vizinhos (que fazem divisa) de cada motoboy acima do máximo, com quem está em cada um
+$vizinhos = [];
+if ($acimaMax && $modo === 'quadrantes') {
+    $viz = quadrantes_vizinhos();
+    $quadInfo = []; foreach (quadrantes_ativos() as $q) $quadInfo[(int)$q['id']] = $q;
+    $motosDoQuad = []; foreach ($grupos as $g) if (str_starts_with($g['chave'], 'q')) $motosDoQuad[(int)substr($g['chave'], 1)] = $g['motoboys'];
+    foreach ($acimaMax as $mid => $x) {
+        $meus = array_keys(array_filter($motosDoQuad, fn($ms) => in_array($mid, $ms, true)));
+        $lista = [];
+        foreach ($meus as $qid) foreach ($viz[$qid] ?? [] as $vq) if (!in_array($vq, $meus, true)) $lista[$vq] = true;
+        $vizinhos[$mid] = [];
+        foreach (array_keys($lista) as $vq) $vizinhos[$mid][] = ['id' => $vq, 'nome' => $quadInfo[$vq]['nome'] ?? "Q$vq",
+                                                               'motoboys' => array_values(array_filter($motosDoQuad[$vq] ?? [], fn($m) => $m !== $mid))];
+        usort($vizinhos[$mid], fn($a, $b) => strcmp($a['nome'], $b['nome']));
+    }
+}
+// decisão de cada um: "manter" ou "passar" para um quadrante vizinho (com o motoboy de lá, ou o escolhido agora)
+$decisao = []; $destino = [];
 foreach ($acimaMax as $mid => $x) {
     $d = $_REQUEST['excesso'][$mid] ?? '';
-    $decisao[$mid] = in_array($d, ['manter', 'passar'], true) ? $d : '';
+    $decisao[$mid] = '';
+    if ($d === 'manter') { $decisao[$mid] = 'manter'; continue; }
+    if ($d !== 'passar' || empty($destQ[$mid])) continue;
+    foreach ($vizinhos[$mid] ?? [] as $v) if ($v['id'] === $destQ[$mid]) {
+        $alvo = $v['motoboys'][0] ?? null;
+        if ($alvo && isset($pm[$alvo]) && $alvo !== $mid) { $decisao[$mid] = 'passar'; $destino[$mid] = ['quad' => $v['id'], 'moto' => $alvo, 'nome' => $v['nome']]; }
+    }
 }
 $pendentes = array_keys(array_filter($decisao, fn($d) => $d === ''));
-// "manter": fica exatamente com tudo do quadrante (não cede nem recebe); sem resposta, a prévia mostra o excesso sendo passado
 $limEq = $lim;
+// "manter": fica exatamente com tudo do quadrante (não cede nem recebe)
 foreach ($decisao as $mid => $d) if ($d === 'manter') $limEq[$mid]['min'] = $limEq[$mid]['max'] = $pm[$mid]['pac_quadrante'];
+// "passar": as entregas mais perto da divisa vão para o motoboy do quadrante escolhido
+$manuais = [];
+foreach ($destino as $mid => $dst) {
+    $poli = null; foreach (quadrantes_ativos() as $q) if ((int)$q['id'] === $dst['quad']) $poli = $q['pontos'];
+    if (!$poli) continue;
+    $mov = passar_excesso($pm, $mid, $dst['moto'], (int)$acimaMax[$mid], $poli);
+    $manuais = array_merge($manuais, $mov);
+    $fica = array_sum(array_column($pm[$mid]['entregas'], 'pacotes'));
+    $limEq[$mid]['min'] = $limEq[$mid]['max'] = $fica;   // não mexe mais nele
+    $limEq[$dst['moto']]['max'] = null;                   // quem recebeu não repassa automático
+}
 $eq = $equilibrar ? equilibrar_pacotes($pm, $limEq) : ['movidas' => [], 'recebeu' => [], 'cedeu' => []];
+foreach ($manuais as $mv) {
+    array_unshift($eq['movidas'], $mv);
+    $eq['cedeu'][$mv['de']] = ($eq['cedeu'][$mv['de']] ?? 0) + $mv['pacotes'];
+    $eq['recebeu'][$mv['para']] = ($eq['recebeu'][$mv['para']] ?? 0) + $mv['pacotes'];
+}
 $erroDecisao = false;
 
 if (($_POST['acao'] ?? '') === 'confirmar' && csrf_ok() && $equilibrar && $pendentes) {
@@ -106,7 +154,7 @@ $iniciadas = (int)$s->fetchColumn();
 
 topo('Distribuir entregas', 'rotas', true);
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=23">
+<link rel="stylesheet" href="assets/sacas.css?v=30">
 <link rel="stylesheet" href="assets/mapa.css?v=2">
 <script src="assets/mapa.js?v=2"></script>
 
@@ -191,10 +239,31 @@ topo('Distribuir entregas', 'rotas', true);
         <div class="decisao">
           <p><span class="bolinha" style="background:<?= e($m['cor']) ?>"></span><b><?= e($nome) ?></b> · <?= e(implode(' + ', $m['nomes'])) ?>:
              <b><?= (int)$m['pac_quadrante'] ?></b> pacotes, máximo <b><?= (int)$lim[$mid]['max'] ?></b> (<b>+<?= (int)$excesso ?></b>)</p>
-          <label><input type="radio" name="excesso[<?= $mid ?>]" value="manter" <?= $decisao[$mid] === 'manter' ? 'checked' : '' ?> onchange="this.form.querySelector('[value=previa]').click()">
+          <?php $escolhaQ = $destQ[$mid] ?? 0; $escolhaM = $destM[$mid] ?? 0; $marcado = $_REQUEST['excesso'][$mid] ?? ''; ?>
+          <label><input type="radio" name="excesso[<?= $mid ?>]" value="manter" <?= $marcado === 'manter' ? 'checked' : '' ?>>
             Adicionar mesmo assim para <?= e($nome) ?> (fica com <?= (int)$m['pac_quadrante'] ?>)</label>
-          <label><input type="radio" name="excesso[<?= $mid ?>]" value="passar" <?= $decisao[$mid] === 'passar' ? 'checked' : '' ?> onchange="this.form.querySelector('[value=previa]').click()">
-            Passar os <?= (int)$excesso ?> pacotes a mais para o próximo motoboy</label>
+          <label class="passar-para"><input type="radio" name="excesso[<?= $mid ?>]" value="passar" <?= $marcado === 'passar' ? 'checked' : '' ?>>
+            Passar os <?= (int)$excesso ?> pacotes a mais para:</label>
+          <?php if (empty($vizinhos[$mid])): ?>
+            <p class="dica">Nenhum quadrante faz divisa com o(s) quadrante(s) de <?= e($nome) ?>.</p>
+          <?php else: ?>
+          <div class="destino-excesso" data-moto="<?= $mid ?>">
+            <select name="destino_quad[<?= $mid ?>]" class="sel-destino" onchange="this.closest('.decisao').querySelector('[value=passar]').checked = true; mostrarMotoDestino(this)">
+              <option value="">Quadrante vizinho…</option>
+              <?php foreach ($vizinhos[$mid] as $v): ?>
+                <option value="<?= $v['id'] ?>" data-sem="<?= $v['motoboys'] ? 0 : 1 ?>" <?= $escolhaQ === $v['id'] ? 'selected' : '' ?>>
+                  <?= e($v['nome']) ?> · <?= $v['motoboys'] ? e(implode(', ', array_map(fn($x) => $nomeMoto[$x] ?? '?', $v['motoboys']))) : 'sem motoboy' ?></option>
+              <?php endforeach; ?>
+            </select>
+            <select name="destino_moto[<?= $mid ?>]" class="sel-moto-destino" <?= $escolhaQ && !array_filter($vizinhos[$mid], fn($v) => $v['id'] === $escolhaQ && $v['motoboys']) ? '' : 'hidden' ?>>
+              <option value="">Quem vai ficar com esse quadrante?</option>
+              <?php foreach ($motoboys as $mm): if ((int)$mm['id'] === $mid) continue; ?><option value="<?= $mm['id'] ?>" <?= $escolhaM === (int)$mm['id'] ? 'selected' : '' ?>><?= e($mm['nome']) ?></option><?php endforeach; ?>
+            </select>
+          </div>
+          <?php endif; ?>
+          <?php if ($decisao[$mid] === 'passar'): ?><p class="confirmado">✓ Confirmado: <?= (int)array_sum(array_map(fn($x) => $x['de'] === $mid ? $x['pacotes'] : 0, $manuais)) ?> pacotes para <?= e($nomeMoto[$destino[$mid]['moto']] ?? '?') ?> (<?= e($destino[$mid]['nome']) ?>)</p>
+          <?php elseif ($decisao[$mid] === 'manter'): ?><p class="confirmado">✓ Confirmado: fica tudo com <?= e($nome) ?></p><?php endif; ?>
+          <button class="btn pequeno primario" name="acao" value="previa">Confirmar escolha</button>
         </div>
       <?php endforeach; ?>
     </div>
@@ -291,6 +360,12 @@ topo('Distribuir entregas', 'rotas', true);
 </div>
 
 <script>
+// quadrante vizinho sem motoboy: aparece a lista para escolher quem fica com ele
+function mostrarMotoDestino(sel) {
+  const sem = sel.selectedOptions[0] && sel.selectedOptions[0].dataset.sem === '1';
+  const m = sel.parentNode.querySelector('.sel-moto-destino');
+  m.hidden = !sem; if (!sem) m.value = '';
+}
 const grupos = <?= json_encode(array_values(array_map(fn($mid, $m) => ['nome' => ($nomeMoto[$mid] ?? '?') . ' · ' . implode(' + ', $m['nomes']), 'cor' => $m['cor'], 'pts' => array_values(array_filter(array_map(fn($e) => $e['lat'] ? [(float)$e['lat'], (float)$e['lng'], (int)$e['entrega'], isset($e['movida_de']) ? 1 : 0] : null, $m['entregas'])))], array_keys($pm), $pm))) ?>;
 <?php $escolhaQuad = []; foreach ($grupos as $g) if (str_starts_with($g['chave'], 'q')) $escolhaQuad[(int)substr($g['chave'], 1)] = array_map(fn($m) => $nomeMoto[$m] ?? '?', $g['motoboys']); ?>
 const quads = <?= json_encode(array_map(fn($q) => ['nome' => $q['nome'], 'cor' => $q['cor'], 'pontos' => $q['pontos'], 'motoboys' => $escolhaQuad[(int)$q['id']] ?? []], quadrantes_ativos()), JSON_UNESCAPED_UNICODE) ?>;
