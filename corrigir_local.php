@@ -19,11 +19,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
     redirecionar($voltar);
 }
 
-$quads = array_map(fn($q) => ['nome' => $q['nome'], 'cor' => $q['cor'], 'pontos' => $q['pontos']], quadrantes_ativos());
+$quads = quadrantes_para_mapa($e['data']);
 topo('Corrigir local', 'rotas', true);
 ?>
-<link rel="stylesheet" href="assets/mapa.css?v=1">
-<script src="assets/mapa.js?v=1"></script>
+<link rel="stylesheet" href="assets/mapa.css?v=2">
+<script src="assets/mapa.js?v=2"></script>
 <link rel="stylesheet" href="assets/sacas.css?v=27">
 <a href="<?= e($voltar) ?>" class="voltar">← Entregas do dia</a>
 <h1>Corrigir local · entrega <?= (int)$e['entrega'] ?></h1>

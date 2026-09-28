@@ -14,3 +14,5 @@
 .np-rotulo-quad::before { display: none; }
 .np-rotulo-quad.escuro { background: rgba(0,0,0,.6); color: #ddd; }
 .np-longe .np-rotulo-quad { font-size: 9.5px; }
+.np-quad-moto { display: block; font-weight: 600; font-size: 10px; text-align: center; }
+.np-longe .np-quad-moto { font-size: 9px; }

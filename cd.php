@@ -53,8 +53,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
 $cd = cd_posicao();
 topo('Centro de distribuição', 'rotas', true);
 ?>
-<link rel="stylesheet" href="assets/mapa.css?v=1">
-<script src="assets/mapa.js?v=1"></script>
+<link rel="stylesheet" href="assets/mapa.css?v=2">
+<script src="assets/mapa.js?v=2"></script>
 
 <a href="rotas.php" class="voltar">← Rotas</a>
 <h1>Centro de distribuição (CD)</h1>
@@ -118,7 +118,7 @@ topo('Centro de distribuição', 'rotas', true);
 const cd = <?= json_encode($cd) ?>;
 const mapa = L.map('mapa').setView(cd || [-25.47, -49.23], cd ? 16 : 11);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapa);
-NP.quadrantes(mapa, <?= json_encode(array_map(fn($q) => ['nome' => $q['nome'], 'cor' => $q['cor'], 'pontos' => $q['pontos']], quadrantes_ativos()), JSON_UNESCAPED_UNICODE) ?>);
+NP.quadrantes(mapa, <?= json_encode(quadrantes_para_mapa(date('Y-m-d')), JSON_UNESCAPED_UNICODE) ?>);
 const f = document.getElementById('f-pos');
 function salvar(ll) { f.lat.value = ll.lat; f.lng.value = ll.lng; f.submit(); }
 if (cd) L.marker(cd, { draggable: true }).addTo(mapa).bindPopup('CD').on('dragend', e => salvar(e.target.getLatLng()));

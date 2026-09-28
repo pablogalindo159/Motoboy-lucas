@@ -9,8 +9,8 @@ $linkTv = str_replace('//tv.php', '/tv.php', $linkTv);
 $data = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['data'] ?? '') ? $_GET['data'] : date('Y-m-d');
 topo('Painel', 'painel', true);
 ?>
-<link rel="stylesheet" href="assets/mapa.css?v=1">
-<script src="assets/mapa.js?v=1"></script>
+<link rel="stylesheet" href="assets/mapa.css?v=2">
+<script src="assets/mapa.js?v=2"></script>
 
 <link rel="stylesheet" href="assets/sacas.css?v=23">
 <div class="painel">
@@ -41,7 +41,7 @@ topo('Painel', 'painel', true);
 const DATA = <?= json_encode($data) ?>;
 const mapa = L.map('mapa', { preferCanvas: true }).setView([<?= MAPA_LAT ?>, <?= MAPA_LNG ?>], 13);
 NP.prepararMapa(mapa);
-NP.quadrantes(mapa, <?= json_encode(array_map(fn($q) => ['nome' => $q['nome'], 'cor' => $q['cor'], 'pontos' => $q['pontos']], quadrantes_ativos()), JSON_UNESCAPED_UNICODE) ?>);
+NP.quadrantes(mapa, <?= json_encode(quadrantes_para_mapa($data), JSON_UNESCAPED_UNICODE) ?>);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapa);
 
 const camadas = L.layerGroup().addTo(mapa);

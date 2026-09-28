@@ -162,8 +162,8 @@ topo('Rota ' . $rota['motoboy'], 'rotas', true);
 </div>
 
 <link rel="stylesheet" href="assets/sacas.css?v=23">
-<link rel="stylesheet" href="assets/mapa.css?v=1">
-<script src="assets/mapa.js?v=1"></script>
+<link rel="stylesheet" href="assets/mapa.css?v=2">
+<script src="assets/mapa.js?v=2"></script>
 
 <?php foreach ($socorros as $x): ?>
   <div class="aviso ambul">
@@ -304,7 +304,7 @@ const mapa = L.map('mapa').setView([<?= MAPA_LAT ?>, <?= MAPA_LNG ?>], 13);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapa);
 NP.prepararMapa(mapa);
 const COR_ROTA = <?= json_encode($rota['cor'] ?: '#8CF20A') ?>;
-NP.quadrantes(mapa, <?= json_encode(array_map(fn($q) => ['nome' => $q['nome'], 'cor' => $q['cor'], 'pontos' => $q['pontos']], quadrantes_ativos()), JSON_UNESCAPED_UNICODE) ?>);
+NP.quadrantes(mapa, <?= json_encode(quadrantes_para_mapa($rota['data']), JSON_UNESCAPED_UNICODE) ?>);
 const pontos = [];
 paradas.forEach(p => {
   const pos = p.lat ? [p.lat, p.lng] : mapa.getCenter();

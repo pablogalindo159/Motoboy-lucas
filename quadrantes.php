@@ -98,7 +98,7 @@ topo('Quadrantes', 'rotas', true);
 ?>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
-<link rel="stylesheet" href="assets/sacas.css?v=28">
+<link rel="stylesheet" href="assets/sacas.css?v=29">
 <a href="rotas.php" class="voltar">← Rotas</a>
 <h1>Quadrantes</h1>
 <div class="duas-colunas quadrantes">
@@ -160,13 +160,17 @@ topo('Quadrantes', 'rotas', true);
 </div>
 <script>
 const CSRF = <?= json_encode(csrf_token()) ?>;
-const quads = <?= json_encode(array_map(fn($q) => ['id' => (int)$q['id'], 'nome' => $q['nome'], 'cor' => $q['cor'], 'pontos' => json_decode($q['pontos'], true)], $quads)) ?>;
+<?php $hojeQ = array_column(quadrantes_para_mapa(date('Y-m-d')), 'motoboys', 'id'); ?>
+const quads = <?= json_encode(array_map(fn($q) => ['id' => (int)$q['id'], 'nome' => $q['nome'], 'cor' => $q['cor'], 'pontos' => json_decode($q['pontos'], true), 'motoboys' => $hojeQ[(int)$q['id']] ?? []], $quads), JSON_UNESCAPED_UNICODE) ?>;
 const cd = <?= json_encode(cd_posicao()) ?>;
 const mapa = L.map('mapa').setView(cd || [<?= MAPA_LAT ?>, <?= MAPA_LNG ?>], 12);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapa);
 if (cd) L.marker(cd, { icon: L.divIcon({ className: '', html: '<div class="mapa-cd">CD</div>', iconSize: [34, 24], iconAnchor: [17, 12] }) }).addTo(mapa);
 const camada = new L.FeatureGroup().addTo(mapa);
-quads.forEach(q => { const p = L.polygon(q.pontos, { color: q.cor, weight: 2, fillOpacity: .15 }).bindTooltip(q.nome, { permanent: true, direction: 'center', className: 'rotulo-quad' }); p.quadId = q.id; camada.addLayer(p); });
+const escQ = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+quads.forEach(q => { const p = L.polygon(q.pontos, { color: q.cor, weight: 2, fillOpacity: .15 })
+  .bindTooltip(escQ(q.nome) + (q.motoboys.length ? '<span class="np-quad-moto">🛵 ' + q.motoboys.map(escQ).join(', ') + '</span>' : ''), { permanent: true, direction: 'center', className: 'rotulo-quad' });
+  p.quadId = q.id; camada.addLayer(p); });
 if (quads.length) mapa.fitBounds(camada.getBounds(), { padding: [20, 20] });
 
 async function salvar(dados) {

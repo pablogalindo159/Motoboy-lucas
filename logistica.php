@@ -1375,3 +1375,22 @@ function buscar_cep(string $cep, string $numero = ''): array {
     }
     return $out;
 }
+
+/**
+ * Quadrantes para os mapas, com o(s) motoboy(s) que ficaram com cada um nas rotas do dia.
+ * (a descrição da rota guarda os quadrantes: "CAJURU 02 (1/2) + WEISSÓPOLIS 01")
+ */
+function quadrantes_para_mapa(?string $data = null): array {
+    $quem = [];
+    if ($data) {
+        $s = db()->prepare("SELECT r.descricao, u.nome FROM rotas r JOIN usuarios u ON u.id = r.motoboy_id WHERE r.data = ? ORDER BY u.nome");
+        $s->execute([$data]);
+        foreach ($s->fetchAll() as $r)
+            foreach (explode(' + ', (string)$r['descricao']) as $parte) {
+                $nome = trim(preg_replace('/\s*\(\d+\/\d+\)$/', '', $parte));
+                if ($nome !== '') $quem[mb_strtoupper($nome, 'UTF-8')][$r['nome']] = true;
+            }
+    }
+    return array_map(fn($q) => ['id' => (int)$q['id'], 'nome' => $q['nome'], 'cor' => $q['cor'], 'pontos' => $q['pontos'],
+                                'motoboys' => array_keys($quem[mb_strtoupper($q['nome'], 'UTF-8')] ?? [])], quadrantes_ativos());
+}

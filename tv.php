@@ -19,8 +19,8 @@ $data = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['data'] ?? '') ? $_GET['data']
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;600&family=Barlow+Semi+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<link rel="stylesheet" href="assets/mapa.css?v=1">
-<script src="assets/mapa.js?v=1"></script>
+<link rel="stylesheet" href="assets/mapa.css?v=2">
+<script src="assets/mapa.js?v=2"></script>
 <style>
   :root { --marca: #8CF20A; --fundo: #000; --painel: #111418; --linha: #262B31; --texto: #F2F4F5; --suave: #8C979E;
           --ok: #2FBF6A; --alerta: #FFC000; --erro: #FF5A4E;
@@ -102,7 +102,7 @@ if (CARTO_KEY) {
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapa);
 }
 NP.prepararMapa(mapa);
-NP.quadrantes(mapa, <?= json_encode(array_map(fn($q) => ['nome' => $q['nome'], 'cor' => $q['cor'], 'pontos' => $q['pontos']], quadrantes_ativos()), JSON_UNESCAPED_UNICODE) ?>, { escuro: true });
+NP.quadrantes(mapa, <?= json_encode(quadrantes_para_mapa($data), JSON_UNESCAPED_UNICODE) ?>, { escuro: true });
 const camadas = L.layerGroup().addTo(mapa);
 const reserva = ['#8CF20A', '#00B0F0', '#FF0066', '#FFC000', '#9B59FF', '#00C49A', '#FF6A00', '#1F5FA8'];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

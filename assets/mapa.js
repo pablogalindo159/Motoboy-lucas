@@ -20,8 +20,10 @@ window.NP = window.NP || {};
       if (!q.pontos || q.pontos.length < 3) return;
       const p = L.polygon(q.pontos, { pane: 'quadrantes', color: q.cor, weight: opcoes.escuro ? 2 : 1.8, opacity: .9, fillColor: q.cor,
                                       fillOpacity: opcoes.escuro ? .07 : .06, dashArray: '6 4', interactive: false }).addTo(g);
+      const motos = (q.motoboys || []).filter(Boolean);
       L.tooltip({ permanent: true, direction: 'center', className: 'np-rotulo-quad' + (opcoes.escuro ? ' escuro' : ''), interactive: false })
-        .setContent(esc(q.nome)).setLatLng(p.getBounds().getCenter()).addTo(g);
+        .setContent(esc(q.nome) + (motos.length ? `<span class="np-quad-moto">🛵 ${motos.map(esc).join(', ')}</span>` : ''))
+        .setLatLng(p.getBounds().getCenter()).addTo(g);
     });
     return g.addTo(mapa);
   };
