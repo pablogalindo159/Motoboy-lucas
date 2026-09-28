@@ -98,12 +98,21 @@ topo('Quadrantes', 'rotas', true);
 ?>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
-<link rel="stylesheet" href="assets/sacas.css?v=23">
+<link rel="stylesheet" href="assets/sacas.css?v=28">
 <a href="rotas.php" class="voltar">← Rotas</a>
 <h1>Quadrantes</h1>
 <div class="duas-colunas quadrantes">
   <div>
     <p class="dica">As 19 zonas do Mercado Livre já vêm fixas no sistema. Em cada uma, escolha o motoboy padrão: ele recebe as entregas daquela zona todo dia (dá para trocar na hora de distribuir).</p>
+    <div class="cartao novo-quad" id="novo-quad">
+      <b>➕ Criar quadrante novo</b>
+      <div class="linha">
+        <input id="nome-novo" placeholder="Nome (ex.: GUARITUBA 01)" maxlength="60">
+        <button type="button" class="btn primario" id="btn-desenhar">Desenhar no mapa</button>
+      </div>
+      <p class="dica" id="dica-desenho">Depois de tocar em "Desenhar no mapa", clique no mapa ponto por ponto em volta da área e <b>clique no primeiro ponto para fechar</b>.</p>
+      <button type="button" class="btn pequeno" id="btn-cancelar-desenho" hidden>Cancelar desenho</button>
+    </div>
     <?php foreach ($quads as $q): ?>
       <form method="post" class="cartao quad" style="--cor-rota:<?= e($q['cor']) ?>">
         <?= csrf_field() ?><input type="hidden" name="id" value="<?= $q['id'] ?>">
@@ -174,9 +183,26 @@ if (window.L && L.Control.Draw) {
     draw: { polygon: { allowIntersection: false, showArea: false }, polyline: false, rectangle: false, circle: false, marker: false, circlemarker: false },
     edit: { featureGroup: camada, remove: false }
   }));
+  // botão "Criar quadrante novo": liga o modo de desenho
+  let desenho = null;
+  const campoNome = document.getElementById('nome-novo'), btnDes = document.getElementById('btn-desenhar'),
+        btnCanc = document.getElementById('btn-cancelar-desenho'), dica = document.getElementById('dica-desenho');
+  function fimDesenho() { if (desenho) desenho.disable(); desenho = null; btnDes.disabled = false; btnCanc.hidden = true; mapa.getContainer().classList.remove('desenhando'); }
+  btnDes.onclick = () => {
+    if (!campoNome.value.trim()) { campoNome.focus(); campoNome.placeholder = 'Digite o nome primeiro'; return; }
+    desenho = new L.Draw.Polygon(mapa, { allowIntersection: false, showArea: false, shapeOptions: { color: '#000', weight: 3 } });
+    desenho.enable();
+    btnDes.disabled = true; btnCanc.hidden = false; mapa.getContainer().classList.add('desenhando');
+    dica.innerHTML = 'Clique no mapa em volta da área de <b>' + campoNome.value.trim().replace(/</g, '&lt;') + '</b>. Para fechar, clique no primeiro ponto.';
+    document.getElementById('mapa').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+  btnCanc.onclick = () => { fimDesenho(); dica.textContent = 'Desenho cancelado.'; };
+  mapa.on(L.Draw.Event.DRAWSTOP, () => { btnDes.disabled = false; btnCanc.hidden = true; mapa.getContainer().classList.remove('desenhando'); });
+
   mapa.on(L.Draw.Event.CREATED, async e => {
-    const nome = prompt('Nome do quadrante (ex.: CJ1):');
-    if (nome === null) return;
+    const nome = campoNome.value.trim() || prompt('Nome do quadrante (ex.: CJ1):');
+    fimDesenho();
+    if (nome === null || nome === '') return;
     try { await salvar({ acao: 'salvar_forma', nome, pontos: JSON.stringify(pontosDe(e.layer)) }); location.reload(); }
     catch (x) { alert('Não foi possível salvar o quadrante.'); }
   });
