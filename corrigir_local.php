@@ -10,6 +10,8 @@ $s->execute([(int)($_REQUEST['id'] ?? 0)]);
 $e = $s->fetch();
 if (!$e) { flash('Entrega não encontrada.', 'erro'); redirecionar('rotas.php'); }
 $voltar = 'rotas.php?data=' . urlencode($e['data']) . '#lista-entregas';
+$volta = (string)($_REQUEST['volta'] ?? '');
+if (preg_match('#^(distribuir\.php\?[^\s]*|rota\.php\?id=\d+(\#mapa)?)$#', $volta)) $voltar = $volta;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
     $lat = (float)($_POST['lat'] ?? 0); $lng = (float)($_POST['lng'] ?? 0);
@@ -25,7 +27,7 @@ topo('Corrigir local', 'rotas', true);
 <link rel="stylesheet" href="assets/mapa.css?v=2">
 <script src="assets/mapa.js?v=2"></script>
 <link rel="stylesheet" href="assets/sacas.css?v=27">
-<a href="<?= e($voltar) ?>" class="voltar">← Entregas do dia</a>
+<a href="<?= e($voltar) ?>" class="voltar">← Voltar</a>
 <h1>Corrigir local · entrega <?= (int)$e['entrega'] ?></h1>
 <p class="numeros"><b><?= e($e['rua']) ?>, <?= e($e['numero_casa']) ?></b> · <?= (int)$e['pacotes'] ?> pacote(s)
   <?php if ($e['geo_status'] === 'fora_bairro'): ?> · <span class="txt-erro">achada só em <?= e($e['bairro'] ?: 'outro bairro') ?></span>
@@ -35,6 +37,7 @@ topo('Corrigir local', 'rotas', true);
   <form method="post" class="form cartao" id="f-local">
     <?= csrf_field() ?>
     <input type="hidden" name="id" value="<?= (int)$e['id'] ?>">
+    <input type="hidden" name="volta" value="<?= e($volta) ?>">
     <input type="hidden" name="lat" value="<?= e($e['lat']) ?>"><input type="hidden" name="lng" value="<?= e($e['lng']) ?>">
     <label>CEP <small>(opcional, ajuda a achar)</small>
       <div class="linha"><input name="cep" inputmode="numeric" placeholder="00000-000" maxlength="9">

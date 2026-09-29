@@ -366,7 +366,7 @@ function mostrarMotoDestino(sel) {
   const m = sel.parentNode.querySelector('.sel-moto-destino');
   m.hidden = !sem; if (!sem) m.value = '';
 }
-const grupos = <?= json_encode(array_values(array_map(fn($mid, $m) => ['nome' => ($nomeMoto[$mid] ?? '?') . ' · ' . implode(' + ', $m['nomes']), 'cor' => $m['cor'], 'pts' => array_values(array_filter(array_map(fn($e) => $e['lat'] ? [(float)$e['lat'], (float)$e['lng'], (int)$e['entrega'], isset($e['movida_de']) ? 1 : 0] : null, $m['entregas'])))], array_keys($pm), $pm))) ?>;
+const grupos = <?= json_encode(array_values(array_map(fn($mid, $m) => ['nome' => ($nomeMoto[$mid] ?? '?') . ' · ' . implode(' + ', $m['nomes']), 'cor' => $m['cor'], 'pts' => array_values(array_filter(array_map(fn($e) => $e['lat'] ? [(float)$e['lat'], (float)$e['lng'], (int)$e['entrega'], isset($e['movida_de']) ? 1 : 0, (int)$e['id'], $e['rua'] . ', ' . $e['numero_casa']] : null, $m['entregas'])))], array_keys($pm), $pm)), JSON_UNESCAPED_UNICODE) ?>;
 <?php $escolhaQuad = []; foreach ($grupos as $g) if (str_starts_with($g['chave'], 'q')) $escolhaQuad[(int)substr($g['chave'], 1)] = array_map(fn($m) => $nomeMoto[$m] ?? '?', $g['motoboys']); ?>
 const quads = <?= json_encode(array_map(fn($q) => ['nome' => $q['nome'], 'cor' => $q['cor'], 'pontos' => $q['pontos'], 'motoboys' => $escolhaQuad[(int)$q['id']] ?? []], quadrantes_ativos()), JSON_UNESCAPED_UNICODE) ?>;
 const cd = <?= json_encode(cd_posicao()) ?>;
@@ -375,8 +375,28 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19,
 const lim = [];
 NP.prepararMapa(mapa);
 NP.quadrantes(mapa, quads);
+// volta da tela do CEP para esta mesma distribuição (com as escolhas de agora)
+function urlDeVolta() {
+  const f = document.getElementById('f-dist'), q = new URLSearchParams();
+  if (f) for (const [k, v] of new FormData(f)) if (k !== 'csrf' && k !== 'acao') q.append(k, v);
+  q.set('acao', 'previa');
+  return 'distribuir.php?' + q.toString();
+}
+const escHtml = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 grupos.forEach(g => g.pts.forEach(p => { lim.push([p[0], p[1]]);
-  NP.pino([p[0], p[1]], { num: p[2], cor: g.cor, extra: p[3] ? 'remanejada' : '', titulo: `${g.nome} · entrega ${p[2]}${p[3] ? ' (remanejada)' : ''}` }).addTo(mapa); }));
+  const m = NP.pino([p[0], p[1]], { num: p[2], cor: g.cor, extra: p[3] ? 'remanejada' : '', arrastar: true }).addTo(mapa);
+  m.bindPopup(() => `<b>Entrega ${p[2]}</b> · ${escHtml(g.nome)}${p[3] ? ' (remanejada)' : ''}<br>${escHtml(p[5])}`
+    + `<br><small>Lugar errado? Arraste a bolinha até o lugar certo.</small>`
+    + `<br><a class="btn pequeno" style="margin-top:.4rem" href="corrigir_local.php?id=${p[4]}&volta=${encodeURIComponent(urlDeVolta())}">📍 Corrigir com CEP</a>`);
+  m.on('dragend', async () => {
+    const ll = m.getLatLng();
+    const fd = new FormData(); fd.append('acao', 'mover_entrega'); fd.append('id', p[4]); fd.append('lat', ll.lat); fd.append('lng', ll.lng);
+    const r = await fetch('api.php', { method: 'POST', body: fd, headers: { 'X-CSRF': <?= json_encode(csrf_token()) ?> } });
+    if (!r.ok) { alert('Não foi possível salvar a nova posição.'); return; }
+    // pode ter mudado de quadrante: recalcula a divisão
+    const b = document.querySelector('#f-dist button[value=previa]'); if (b) b.click();
+  });
+}));
 if (cd) { L.marker(cd, { icon: L.divIcon({ className: '', html: '<div class="mapa-cd">CD</div>', iconSize: [34, 24], iconAnchor: [17, 12] }) }).addTo(mapa); lim.push(cd); }
 if (lim.length) mapa.fitBounds(lim, { padding: [20, 20] });
 </script>

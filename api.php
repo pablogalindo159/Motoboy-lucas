@@ -49,6 +49,16 @@ case 'mover_parada':
     if ($p = $s->fetch()) aprender_local($p['endereco'], (string)$p['numero_casa'], (float)$_POST['lat'], (float)$_POST['lng'], $p['bairro'], $p['data']);
     responder(['ok' => true]);
 
+// ---------- ADMIN: arrastou a bolinha de uma entrega (mapa da distribuição): corrige e aprende ----------
+case 'mover_entrega':
+    exigir('admin', true);
+    $s = db()->prepare("SELECT rua, numero_casa, data FROM entregas WHERE id = ?");
+    $s->execute([(int)($_POST['id'] ?? 0)]);
+    $e = $s->fetch();
+    if (!$e) responder(['erro' => 'Entrega não encontrada.'], 404);
+    aprender_local($e['rua'], (string)$e['numero_casa'], (float)$_POST['lat'], (float)$_POST['lng'], null, $e['data']);
+    responder(['ok' => true]);
+
 // ---------- ADMIN: CEP -> endereço e ponto no mapa ----------
 case 'buscar_cep':
     exigir('admin', true);

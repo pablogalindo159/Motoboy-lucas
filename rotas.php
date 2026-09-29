@@ -175,7 +175,7 @@ topo('Rotas', 'rotas');
           <td><?php if ($it['sem_local']): ?><small class="txt-alerta">não achado no mapa</small>
               <?php elseif ($it['fora']): ?><small class="txt-erro">⚠ <?= e($it['zona']) ?></small>
               <?php else: ?><small><?= e($it['zona'] ?? '—') ?></small><?php endif; ?>
-              <?php if ($it['sem_local'] || $it['fora']): ?><a class="btn pequeno corrigir" href="corrigir_local.php?id=<?= (int)$it['id'] ?>">📍 Corrigir</a><?php endif; ?></td>
+              <a class="btn pequeno corrigir" href="corrigir_local.php?id=<?= (int)$it['id'] ?>">📍 Corrigir</a></td>
           <td><?php if ($it['motoboy']): ?><span class="bolinha" style="background:<?= e($it['cor'] ?: '#999') ?>"></span><?= e($it['motoboy']) ?>
               <?php else: ?><span class="selo sem-moto">Sem motoboy</span><?php endif; ?></td>
           <td><?= $it['status'] ? '<span class="selo ' . e($it['status']) . '">' . $rotStatus[$it['status']] . '</span>' : '—' ?></td>

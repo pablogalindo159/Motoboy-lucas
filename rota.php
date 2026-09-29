@@ -299,7 +299,8 @@ topo('Rota ' . $rota['motoboy'], 'rotas', true);
 
 <script>
 const CSRF = <?= json_encode(csrf_token()) ?>;
-const paradas = <?= json_encode(array_map(fn($p) => ['id' => (int)$p['id'], 'numero' => (int)$p['numero'], 'entrega' => $p['entrega'] !== null ? (int)$p['entrega'] : null, 'lat' => $p['lat'] ? (float)$p['lat'] : null, 'lng' => $p['lng'] ? (float)$p['lng'] : null, 'status' => $p['status'], 'end' => $p['endereco'] . ', ' . $p['numero_casa']], $paradas)) ?>;
+<?php $eidPorNum = []; $s = db()->prepare("SELECT entrega, id FROM entregas WHERE data = ?"); $s->execute([$rota['data']]); foreach ($s->fetchAll() as $x) $eidPorNum[(int)$x['entrega']] = (int)$x['id']; ?>
+const paradas = <?= json_encode(array_map(fn($p) => ['id' => (int)$p['id'], 'eid' => $p['entrega'] !== null ? ($eidPorNum[(int)$p['entrega']] ?? null) : null, 'numero' => (int)$p['numero'], 'entrega' => $p['entrega'] !== null ? (int)$p['entrega'] : null, 'lat' => $p['lat'] ? (float)$p['lat'] : null, 'lng' => $p['lng'] ? (float)$p['lng'] : null, 'status' => $p['status'], 'end' => $p['endereco'] . ', ' . $p['numero_casa']], $paradas)) ?>;
 const mapa = L.map('mapa').setView([<?= MAPA_LAT ?>, <?= MAPA_LNG ?>], 13);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapa);
 NP.prepararMapa(mapa);
@@ -309,7 +310,9 @@ const pontos = [];
 paradas.forEach(p => {
   const pos = p.lat ? [p.lat, p.lng] : mapa.getCenter();
   const m = NP.pino(pos, { num: p.entrega ?? p.numero, cor: COR_ROTA, status: p.status, arrastar: true, extra: p.lat ? '' : 'sem-pos' })
-    .addTo(mapa).bindPopup(`<b>Entrega ${p.entrega ?? p.numero}</b> (parada ${p.numero})<br>${p.end.replace(/</g, '&lt;')}`);
+    .addTo(mapa).bindPopup(`<b>Entrega ${p.entrega ?? p.numero}</b> (parada ${p.numero})<br>${p.end.replace(/</g, '&lt;')}`
+      + `<br><small>Lugar errado? Arraste a bolinha até o lugar certo.</small>`
+      + (p.eid ? `<br><a class="btn pequeno" style="margin-top:.4rem" href="corrigir_local.php?id=${p.eid}&volta=${encodeURIComponent('rota.php?id=<?= (int)$id ?>')}">📍 Corrigir com CEP</a>` : ''));
   if (p.lat) pontos.push(pos);
   m.on('dragend', async () => {
     const ll = m.getLatLng();
