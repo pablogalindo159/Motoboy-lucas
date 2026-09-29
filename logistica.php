@@ -765,7 +765,7 @@ function apuracao(string $ini, string $fim): array {
         SELECT r.id rota_id, r.motoboy_id, r.data, COALESCE(r.valor_entrega, u.valor_entrega) valor,
                COALESCE(SUM(p.status = 'entregue'), 0) entregues, COALESCE(SUM(p.status = 'falhou'), 0) falhas,
                COALESCE(SUM(p.status = 'pendente'), 0) pendentes,
-               COALESCE(SUM(CASE WHEN p.status = 'entregue' THEN p.pacotes ELSE 0 END), 0) pacotes
+               COALESCE(SUM(CASE WHEN p.status = 'entregue' THEN COALESCE(p.pacotes_entregues, p.pacotes) ELSE 0 END), 0) pacotes
         FROM rotas r JOIN usuarios u ON u.id = r.motoboy_id LEFT JOIN paradas p ON p.rota_id = r.id
         WHERE r.data BETWEEN ? AND ? GROUP BY r.id ORDER BY r.data");
     $s->execute([$ini, $fim]);
@@ -1449,3 +1449,13 @@ function passar_excesso(array &$pm, int $de, int $para, int $qtd, array $poliAlv
     $pm[$de]['entregas'] = array_values($pm[$de]['entregas']);
     return $movidas;
 }
+
+// Entrega com mais de um pacote: quantos foram entregues e quantos recusados
+function garantir_schema_v17(): void {
+    $flag = __DIR__ . '/.schema_v17';
+    if (file_exists($flag)) return;
+    if (!db()->query("SHOW COLUMNS FROM paradas LIKE 'pacotes_entregues'")->fetch())
+        db()->exec("ALTER TABLE paradas ADD COLUMN pacotes_entregues INT NULL, ADD COLUMN pacotes_recusados INT NULL, ADD COLUMN motivo_recusa VARCHAR(255) NULL");
+    @touch($flag);
+}
+garantir_schema_v17();

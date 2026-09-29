@@ -316,3 +316,10 @@ a.btn.corrigir { margin-top: .3rem; }
 .destino-excesso select { width: auto; max-width: 100%; }
 .acima-max .confirmado { color: var(--verde); font-weight: 600; margin: .3rem 0; }
 .acima-max .decisao > .btn { margin-top: .3rem; }
+
+/* escolher entrega / pacotes recusados */
+#lista-pend li { cursor: pointer; }
+#lista-pend li[hidden] { display: none; }
+.busca-pend { margin: .4rem 0 .2rem; }
+#dlg-pacotes .contador { display: grid; grid-template-columns: 64px 1fr 64px; gap: .5rem; align-items: center; margin: .5rem 0; }
+#dlg-pacotes .contador input { text-align: center; font: 800 2rem/1 var(--fonte-placa); }

@@ -70,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_ok()) {
     }
 
     if ($acao === 'reabrir_parada') {
-        db()->prepare("UPDATE paradas SET status='pendente', motivo=NULL, finalizado_em=NULL WHERE id = ? AND rota_id = ?")->execute([(int)$_POST['parada_id'], $id]);
+        db()->prepare("UPDATE paradas SET status='pendente', motivo=NULL, finalizado_em=NULL, pacotes_entregues=NULL, pacotes_recusados=NULL, motivo_recusa=NULL WHERE id = ? AND rota_id = ?")->execute([(int)$_POST['parada_id'], $id]);
         flash('Parada voltou para pendente.');
     }
 
@@ -124,7 +124,7 @@ $fotos = [];
 if ($paradas) {
     $s = db()->prepare("SELECT c.id, c.parada_id, c.lat, c.lng, c.precisao_m, c.endereco_gps, c.criado_em FROM comprovantes c JOIN paradas p ON p.id = c.parada_id WHERE p.rota_id = ? ORDER BY c.id");
     $s->execute([$id]);
-    foreach ($s->fetchAll() as $c) $fotos[$c['parada_id']] = $c;
+    foreach ($s->fetchAll() as $c) $fotos[$c['parada_id']][] = $c;
 }
 
 $s = db()->prepare("SELECT * FROM sacas WHERE rota_id = ? ORDER BY caixa");
@@ -273,11 +273,11 @@ topo('Rota ' . $rota['motoboy'], 'rotas', true);
             <td><?= e($p['endereco']) ?>, <?= e($p['numero_casa']) ?><?= $p['bairro'] ? ' – ' . e($p['bairro']) : '' ?>
               <?php if (!$p['lat']): ?><br><small class="txt-alerta">Sem posição no mapa</small><?php endif; ?>
               <?php if ($p['motivo']): ?><br><small>Motivo: <?= e($p['motivo']) ?></small><?php endif; ?></td>
-            <td><?= (int)$p['pacotes'] ?></td>
+            <td><?= (int)$p['pacotes'] ?><?php if ($p['pacotes_recusados']): ?><br><small class="txt-alerta"><?= (int)$p['pacotes_entregues'] ?> entregue(s) · <?= (int)$p['pacotes_recusados'] ?> recusado(s)<?= $p['motivo_recusa'] ? ': ' . e($p['motivo_recusa']) : '' ?></small><?php endif; ?></td>
             <td><span class="selo <?= e($p['status']) ?>"><?= $rotuloParada[$p['status']] ?></span>
               <?php if ($p['finalizado_em']): ?><br><small><?= hora_br($p['finalizado_em']) ?></small><?php endif; ?>
-              <?php if (isset($fotos[$p['id']])): $f = $fotos[$p['id']]; ?>
-                <br><a class="link-foto" href="foto.php?id=<?= (int)$f['id'] ?>" target="_blank">📷 Pacote voador</a>
+              <?php if (isset($fotos[$p['id']])): $f = $fotos[$p['id']][0]; ?>
+                <br><?php foreach ($fotos[$p['id']] as $i => $ff): ?><a class="link-foto" href="foto.php?id=<?= (int)$ff['id'] ?>" target="_blank">📷 <?= count($fotos[$p['id']]) > 1 ? 'Foto ' . ($i + 1) : 'Pacote voador' ?></a> <?php endforeach; ?>
                 <?php if ($f['lat']): ?><br><small><a href="https://www.google.com/maps?q=<?= e($f['lat']) ?>,<?= e($f['lng']) ?>" target="_blank">GPS ±<?= (int)$f['precisao_m'] ?> m</a></small><?php endif; ?>
                 <?php if (!empty($f['endereco_gps'])): ?><br><small>📍 <?= e($f['endereco_gps']) ?></small><?php endif; ?>
               <?php endif; ?></td>

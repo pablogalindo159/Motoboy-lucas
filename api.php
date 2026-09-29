@@ -83,8 +83,19 @@ case 'status_parada':
     $s->execute([(int)$_POST['parada_id'], $u['id']]);
     $p = $s->fetch();
     if (!$p) responder(['erro' => 'Parada não encontrada'], 404);
-    db()->prepare("UPDATE paradas SET status = ?, motivo = ?, finalizado_em = NOW() WHERE id = ?")
-        ->execute([$status, $status === 'falhou' ? mb_substr(trim($_POST['motivo'] ?? ''), 0, 255) : null, $p['id']]);
+    // entrega com mais de um pacote: quantos entregou (o resto foi recusado). 0 entregues = não entregue.
+    $tot = (int)db()->query("SELECT pacotes FROM paradas WHERE id = " . (int)$p['id'])->fetchColumn();
+    $ent = null; $rec = null; $motRec = null;
+    if ($status === 'entregue' && isset($_POST['entregues']) && is_numeric($_POST['entregues'])) {
+        $ent = max(0, min($tot, (int)$_POST['entregues']));
+        $rec = $tot - $ent;
+        $motRec = $rec ? (mb_substr(trim($_POST['motivo'] ?? ''), 0, 255) ?: 'Recusado') : null;
+        if ($ent === 0) { $status = 'falhou'; $_POST['motivo'] = 'Recusado: ' . $motRec; }
+        if ($rec === 0) { $ent = null; $rec = null; }  // entregou tudo: nada a registrar
+    }
+    db()->prepare("UPDATE paradas SET status = ?, motivo = ?, finalizado_em = NOW(), pacotes_entregues = ?, pacotes_recusados = ?, motivo_recusa = ? WHERE id = ?")
+        ->execute([$status, $status === 'falhou' ? mb_substr(trim($_POST['motivo'] ?? ''), 0, 255) : null,
+                   $status === 'entregue' ? $ent : null, $status === 'entregue' ? $rec : null, $status === 'entregue' ? $motRec : null, $p['id']]);
     apos_marcar_entrega((int)$p['rota_id'], (int)$u['id'], $u['nome']);
     responder(['ok' => true]);
 
@@ -185,17 +196,18 @@ case 'pacote_voador':
     $num = fn($k) => isset($_POST[$k]) && is_numeric($_POST[$k]) ? (float)$_POST[$k] : null;
     $tirada = preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $_POST['tirada_em'] ?? '') ? $_POST['tirada_em'] : null;
     $endGps = mb_substr(trim((string)($_POST['endereco_gps'] ?? '')), 0, 255) ?: null;
+    $jaTinha = (int)db()->query("SELECT COUNT(*) FROM comprovantes WHERE parada_id = " . (int)$p['id'])->fetchColumn();
     db()->prepare("INSERT INTO comprovantes (parada_id, motoboy_id, tipo, arquivo, lat, lng, precisao_m, endereco_gps, tirada_em) VALUES (?,?,?,?,?,?,?,?,?)")
         ->execute([$p['id'], $u['id'], 'pacote_voador', $nome, $num('lat'), $num('lng'), $num('precisao') !== null ? (int)$num('precisao') : null, $endGps, $tirada]);
     $cid = (int)db()->lastInsertId();
     $s = db()->prepare("SELECT entrega, endereco, numero_casa FROM paradas WHERE id = ?"); $s->execute([$p['id']]); $pp = $s->fetch();
-    avisar('admin', null, 'pacote_voador', '📷 ' . $u['nome'] . ': pacote voador na entrega ' . ($pp['entrega'] ?? ''),
+    if (!$jaTinha) avisar('admin', null, 'pacote_voador', '📷 ' . $u['nome'] . ': pacote voador na entrega ' . ($pp['entrega'] ?? ''),
            trim(($pp['endereco'] ?? '') . ', ' . ($pp['numero_casa'] ?? '')) . ($endGps ? " · GPS em: $endGps" : '') . '. Toque para ver a foto.', "foto.php?id=$cid", 'normal');
     if ($p['status'] === 'pendente') {
-        db()->prepare("UPDATE paradas SET status = 'entregue', motivo = 'Pacote voador (foto)', finalizado_em = NOW() WHERE id = ?")->execute([$p['id']]);
+        db()->prepare("UPDATE paradas SET status = 'entregue', motivo = 'Pacote voador (foto)', finalizado_em = NOW(), pacotes_entregues = NULL, pacotes_recusados = NULL, motivo_recusa = NULL WHERE id = ?")->execute([$p['id']]);
         apos_marcar_entrega((int)$p['rota_id'], (int)$u['id'], $u['nome']);
     }
-    responder(['ok' => true]);
+    responder(['ok' => true, 'fotos' => $jaTinha + 1]);
 
 // ---------- MOTOBOY: socorrista pegou os pacotes do motoboy parado ----------
 case 'socorro_coletado':

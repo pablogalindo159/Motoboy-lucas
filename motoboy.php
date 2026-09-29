@@ -28,7 +28,11 @@ if ($rota) {
 $pendentes = array_values(array_filter($paradas, fn($p) => $p['status'] === 'pendente'));
 $feitas = array_values(array_filter($paradas, fn($p) => $p['status'] !== 'pendente'));
 $entregues = count(array_filter($paradas, fn($p) => $p['status'] === 'entregue'));
+// o motoboy pode escolher a entrega que quer fazer (?p=ID); senão, a próxima da ordem
 $prox = $pendentes[0] ?? null;
+$escolhida = false;
+if (!empty($_GET['p'])) foreach ($pendentes as $pp) if ((int)$pp['id'] === (int)$_GET['p']) { $prox = $pp; $escolhida = true; }
+$outras = array_values(array_filter($pendentes, fn($pp) => $prox && (int)$pp['id'] !== (int)$prox['id']));
 // ambulância: socorro que eu preciso buscar / entregas minhas que foram para outro
 $s = db()->prepare("SELECT x.*, u.nome de_nome, u.telefone de_tel FROM socorros x JOIN usuarios u ON u.id = x.de_motoboy
                     WHERE x.para_motoboy = ? AND x.data = ? AND x.status = 'aguardando' ORDER BY x.id");
@@ -54,7 +58,7 @@ foreach ([$qAnt, $qAtual] as $qq) {
     $pg = $s->fetch();
     $depois = 0;
     if ($pg) { // pacotes entregues depois do pagamento (se pagou antes da quinzena acabar)
-        $s = db()->prepare("SELECT COALESCE(SUM(p.pacotes), 0) FROM paradas p JOIN rotas r ON r.id = p.rota_id WHERE r.motoboy_id = ? AND r.data BETWEEN ? AND ? AND p.status = 'entregue' AND p.finalizado_em > ?");
+        $s = db()->prepare("SELECT COALESCE(SUM(COALESCE(p.pacotes_entregues, p.pacotes)), 0) FROM paradas p JOIN rotas r ON r.id = p.rota_id WHERE r.motoboy_id = ? AND r.data BETWEEN ? AND ? AND p.status = 'entregue' AND p.finalizado_em > ?");
         $s->execute([$u['id'], $qq['ini'], $qq['fim'], $pg['pago_em']]);
         $depois = (int)$s->fetchColumn();
     }
@@ -62,9 +66,9 @@ foreach ([$qAnt, $qAtual] as $qq) {
 }
 $comFoto = [];
 if ($paradas) {
-    $s = db()->prepare("SELECT parada_id, MAX(id) id FROM comprovantes WHERE parada_id IN (" . implode(',', array_map('intval', array_column($paradas, 'id'))) . ") GROUP BY parada_id");
+    $s = db()->prepare("SELECT parada_id, id FROM comprovantes WHERE parada_id IN (" . implode(',', array_map('intval', array_column($paradas, 'id'))) . ") ORDER BY id");
     $s->execute();
-    $comFoto = array_column($s->fetchAll(), 'id', 'parada_id');
+    foreach ($s->fetchAll() as $c) $comFoto[$c['parada_id']][] = (int)$c['id'];
 }
 
 function destino(array $p): string {
@@ -90,7 +94,7 @@ topo('Minhas entregas');
 $sacasColetadas = count(array_filter($sacas, fn($x) => $x['coletada']));
 $corRota = $rota['cor'] ?? null;
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=27">
+<link rel="stylesheet" href="assets/sacas.css?v=31">
 <div class="app-moto">
   <header class="moto-topo">
     <img src="assets/icone.svg" alt="" width="40" height="40" class="icone-topo">
@@ -228,7 +232,7 @@ $corRota = $rota['cor'] ?? null;
         <a class="btn grande" href="<?= e(link_waze($prox)) ?>" target="_blank" rel="noopener">Waze</a>
       </div>
       <div class="confirmar">
-        <button class="btn sucesso grande" onclick="marcar(<?= $prox['id'] ?>, 'entregue')">Entregue</button>
+        <button class="btn sucesso grande" onclick="entregue(<?= $prox['id'] ?>, <?= (int)$prox['pacotes'] ?>)">Entregue</button>
         <button class="btn perigo grande" onclick="naoEntregue(<?= $prox['id'] ?>)">Não entregue</button>
       </div>
       <button class="btn largo voador" onclick='pacoteVoador(<?= json_encode([
@@ -236,6 +240,8 @@ $corRota = $rota['cor'] ?? null;
           "endereco" => $prox["endereco"] . ", " . $prox["numero_casa"], "motoboy" => $u["nome"]], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_TAG | JSON_HEX_AMP) ?>)'>
         <span aria-hidden="true">📦</span> Pacote voador <small>foto com GPS · marca como entregue</small>
       </button>
+      <?php if ($outras): ?><a class="btn largo" href="#lista-pend" onclick="document.getElementById('lista-pend').open = true">🔀 Escolher outra entrega</a><?php endif; ?>
+      <?php if ($escolhida): ?><a class="btn largo" href="motoboy.php">↩ Voltar para a ordem da rota</a><?php endif; ?>
       <?php if (count($pendentes) > 1): ?>
         <a class="btn largo" href="<?= e(link_rota_completa($pendentes)) ?>" target="_blank" rel="noopener">Fazer a rota completa (<?= min(10, count($pendentes)) ?> próximas paradas)</a>
       <?php endif; ?>
@@ -260,13 +266,15 @@ $corRota = $rota['cor'] ?? null;
     </section>
     <?php endif; ?>
 
-    <?php if (count($pendentes) > 1): ?>
-    <details class="lista-moto" open>
-      <summary>Depois desta (<?= count($pendentes) - 1 ?>)</summary>
+    <?php if ($outras): ?>
+    <details class="lista-moto" id="lista-pend" open>
+      <summary>Outras entregas pendentes (<?= count($outras) ?>) · toque para fazer</summary>
+      <?php if (count($outras) > 5): ?><input type="search" class="busca-pend" placeholder="Buscar pelo número da entrega ou rua" oninput="filtrarPend(this.value)"><?php endif; ?>
       <ol>
-        <?php foreach (array_slice($pendentes, 1) as $p): ?>
-          <li><span class="num-parada"><?= (int)($p['entrega'] ?: $p['numero']) ?></span><div><?= $p['socorro_id'] ? '🚑 ' : '' ?><?= e($p['endereco']) ?>, <?= e($p['numero_casa']) ?><small><?= e($p['bairro']) ?> · <?= (int)$p['pacotes'] ?> pct</small></div>
-            <a href="<?= e(link_gmaps($p)) ?>" target="_blank" rel="noopener" class="btn pequeno">Ir</a></li>
+        <?php foreach ($outras as $p): ?>
+          <li data-busca="<?= e((int)($p['entrega'] ?: $p['numero']) . ' ' . sem_acento($p['endereco'])) ?>" onclick="location.href='motoboy.php?p=<?= (int)$p['id'] ?>'">
+            <span class="num-parada"><?= (int)($p['entrega'] ?: $p['numero']) ?></span><div><?= $p['socorro_id'] ? '🚑 ' : '' ?><?= e($p['endereco']) ?>, <?= e($p['numero_casa']) ?><small><?= e($p['bairro']) ?> · <?= (int)$p['pacotes'] ?> pct</small></div>
+            <a href="motoboy.php?p=<?= (int)$p['id'] ?>" class="btn pequeno primario" onclick="event.stopPropagation()">Fazer</a></li>
         <?php endforeach; ?>
       </ol>
     </details>
@@ -277,7 +285,7 @@ $corRota = $rota['cor'] ?? null;
       <summary>Já feitas (<?= count($feitas) ?>)</summary>
       <ol>
         <?php foreach ($feitas as $p): ?>
-          <li><span class="num-parada <?= e($p['status']) ?>"><?= (int)($p['entrega'] ?: $p['numero']) ?></span><div><?= e($p['endereco']) ?>, <?= e($p['numero_casa']) ?><small><?= $p['status'] === 'entregue' ? 'Entregue' : 'Não entregue' ?> às <?= hora_br($p['finalizado_em']) ?><?php if (isset($comFoto[$p['id']])): ?> · <a href="foto.php?id=<?= (int)$comFoto[$p['id']] ?>" target="_blank">📷 foto</a><?php endif; ?></small></div></li>
+          <li><span class="num-parada <?= e($p['status']) ?>"><?= (int)($p['entrega'] ?: $p['numero']) ?></span><div><?= e($p['endereco']) ?>, <?= e($p['numero_casa']) ?><small><?= $p['status'] === 'entregue' ? 'Entregue' : 'Não entregue' ?> às <?= hora_br($p['finalizado_em']) ?><?= $p['pacotes_recusados'] ? ' · ' . (int)$p['pacotes_entregues'] . ' de ' . (int)$p['pacotes'] . ' pct (' . (int)$p['pacotes_recusados'] . ' recusado' . ($p['pacotes_recusados'] > 1 ? 's' : '') . ')' : '' ?><?php foreach ($comFoto[$p['id']] ?? [] as $i => $fid): ?> · <a href="foto.php?id=<?= $fid ?>" target="_blank">📷<?= count($comFoto[$p['id']]) > 1 ? $i + 1 : ' foto' ?></a><?php endforeach; ?></small></div></li>
         <?php endforeach; ?>
       </ol>
     </details>
@@ -323,7 +331,32 @@ $corRota = $rota['cor'] ?? null;
     <button class="btn grande" onclick="refazerFoto()">Refazer</button>
     <button class="btn sucesso grande" id="voador-salvar" onclick="salvarVoador()">Salvar e marcar entregue</button>
   </div>
+  <div class="voador-botoes" id="voador-b-mais" hidden>
+    <button class="btn grande" onclick="maisUmaFoto()">📷 Tirar mais uma foto</button>
+    <button class="btn sucesso grande" onclick="pararCamera(); location.href = 'motoboy.php'">Concluir</button>
+  </div>
   <input type="file" id="voador-arquivo" accept="image/*" capture="environment" hidden>
+</dialog>
+
+<dialog id="dlg-pacotes">
+  <form method="dialog" class="form" id="f-pacotes">
+    <h2>Quantos pacotes você entregou?</h2>
+    <p class="dica">Esta entrega tem <b id="pac-total"></b> pacotes.</p>
+    <div class="contador">
+      <button type="button" class="btn grande" onclick="ajustarPac(-1)">−</button>
+      <input name="n" type="number" inputmode="numeric" min="0" readonly>
+      <button type="button" class="btn grande" onclick="ajustarPac(1)">+</button>
+    </div>
+    <p id="pac-recusados" class="txt-alerta"></p>
+    <div id="pac-motivo" hidden>
+      <label>Motivo da recusa
+        <select name="motivo"><option>Cliente recusou</option><option>Pacote avariado</option><option>Pedido errado</option><option>Cliente não reconheceu</option><option>Outro</option></select></label>
+    </div>
+    <div class="confirmar">
+      <button value="cancelar" class="btn">Voltar</button>
+      <button value="ok" class="btn sucesso">Confirmar</button>
+    </div>
+  </form>
 </dialog>
 
 <dialog id="dlg-sos">
@@ -374,11 +407,49 @@ async function marcar(id, status, motivo = '') {
     const r = await post({ acao: 'status_parada', parada_id: id, status, motivo });
     if (!r.ok) throw new Error();
     if (navigator.vibrate) navigator.vibrate(80);
-    location.reload();
+    location.href = 'motoboy.php';
   } catch (e) {
     alert('Não foi possível salvar. Confira a internet e toque de novo.');
     document.querySelectorAll('.confirmar button').forEach(b => b.disabled = false);
   }
+}
+
+// Entregue: com mais de 1 pacote, pergunta quantos foram entregues (o resto é recusado)
+let pacTotal = 1;
+function ajustarPac(d) {
+  const f = document.getElementById('f-pacotes');
+  const n = Math.max(0, Math.min(pacTotal, (+f.n.value || 0) + d)); f.n.value = n;
+  const rec = pacTotal - n;
+  document.getElementById('pac-recusados').textContent = rec ? `${rec} recusado${rec > 1 ? 's' : ''}` + (n === 0 ? ' · vai contar como não entregue' : '') : '';
+  document.getElementById('pac-motivo').hidden = !rec;
+}
+function entregue(id, pacotes) {
+  if (pacotes <= 1) return marcar(id, 'entregue');
+  pacTotal = pacotes;
+  const dlg = document.getElementById('dlg-pacotes'), f = document.getElementById('f-pacotes');
+  document.getElementById('pac-total').textContent = pacotes;
+  f.n.value = pacotes; ajustarPac(0);
+  dlg.showModal();
+  dlg.onclose = () => {
+    if (dlg.returnValue !== 'ok') return;
+    marcarPacotes(id, +f.n.value, f.motivo.value);
+  };
+}
+async function marcarPacotes(id, n, motivo) {
+  document.querySelectorAll('.confirmar button').forEach(b => b.disabled = true);
+  try {
+    const r = await post({ acao: 'status_parada', parada_id: id, status: 'entregue', entregues: n, motivo });
+    if (!r.ok) throw new Error();
+    if (navigator.vibrate) navigator.vibrate(80);
+    location.href = 'motoboy.php';
+  } catch (e) {
+    alert('Não foi possível salvar. Confira a internet e toque de novo.');
+    document.querySelectorAll('.confirmar button').forEach(b => b.disabled = false);
+  }
+}
+function filtrarPend(q) {
+  q = q.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  document.querySelectorAll('#lista-pend li').forEach(li => li.hidden = q && !li.dataset.busca.toLowerCase().includes(q));
 }
 
 function naoEntregue(id) {
@@ -447,6 +518,8 @@ async function pacoteVoador(dados) {
   document.getElementById('voador-video').hidden = false;
   document.getElementById('voador-b-foto').hidden = false;
   document.getElementById('voador-b-salvar').hidden = true;
+  document.getElementById('voador-b-mais').hidden = true;
+  document.getElementById('voador-salvar').textContent = 'Salvar e marcar entregue';
   document.getElementById('voador-aviso').hidden = true;
   dlgV().showModal();
   if ('geolocation' in navigator) {
@@ -553,6 +626,7 @@ async function salvarVoador() {
   const bt = document.getElementById('voador-salvar'); bt.disabled = true; bt.textContent = 'Enviando…';
   const fd = new FormData();
   fd.append('acao', 'pacote_voador'); fd.append('parada_id', voador.id);
+  if (voador.salvas) fd.append('adicional', '1');
   fd.append('foto', fotoBlob, `entrega-${voador.entrega}.jpg`);
   fd.append('tirada_em', voador.tiradaEm);
   if (voador.gps) { fd.append('lat', voador.gps.lat); fd.append('lng', voador.gps.lng); fd.append('precisao', Math.round(voador.gps.accuracy)); }
@@ -563,11 +637,23 @@ async function salvarVoador() {
     if (r.status === 401) { location.href = 'index.php'; return; }
     if (!r.ok) throw new Error(j.erro || 'Falha ao enviar');
     if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
-    pararCamera(); location.reload();
+    // salva e pergunta se quer tirar mais fotos
+    voador.salvas = (voador.salvas || 0) + 1;
+    bt.disabled = false;
+    document.getElementById('voador-b-salvar').hidden = true;
+    document.getElementById('voador-b-mais').hidden = false;
+    const av = document.getElementById('voador-aviso');
+    av.textContent = `✓ ${voador.salvas} foto${voador.salvas > 1 ? 's' : ''} salva${voador.salvas > 1 ? 's' : ''} · entrega marcada como entregue`; av.hidden = false;
   } catch (e) {
     alert(e.message + '. Confira a internet e toque em Salvar de novo.');
-    bt.disabled = false; bt.textContent = 'Salvar e marcar entregue';
+    bt.disabled = false; bt.textContent = voador.salvas ? 'Salvar foto' : 'Salvar e marcar entregue';
   }
+}
+function maisUmaFoto() {
+  document.getElementById('voador-b-mais').hidden = true;
+  document.getElementById('voador-salvar').textContent = 'Salvar foto';
+  refazerFoto();
+  document.getElementById('voador-aviso').hidden = true;
 }
 
 // ---- Pedir socorro / recusar ambulância ----
