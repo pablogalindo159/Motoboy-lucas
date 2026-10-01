@@ -57,6 +57,9 @@ foreach ($grupos as $g) {
     }
 }
 $pm = montar_por_motoboy($gruposDist);
+// entregas que ainda não têm motoboy (quadrante em "Não distribuir" e as de fora): aparecem no mapa em cinza
+$semDono = [];
+foreach ($gruposDist as $g) if (empty($g['motoboy_id'])) foreach ($g['entregas'] as $e) { $e['_quad'] = $g['nome']; $semDono[(int)$e['id']] = $e; }
 
 // mínimo e máximo de hoje: o que foi digitado agora; se não, o padrão do cadastro
 $padroes = db()->query("SELECT id, pacotes_min, pacotes_max FROM usuarios WHERE tipo = 'motoboy'")->fetchAll(PDO::FETCH_UNIQUE);
@@ -132,11 +135,19 @@ foreach ($forcar as $eid => $mid) {
             $eq['movidas'][] = ['entrega' => (int)$e['entrega'], 'de' => $de, 'para' => $mid, 'pacotes' => (int)$e['pacotes']];
             $eq['cedeu'][$de] = ($eq['cedeu'][$de] ?? 0) + (int)$e['pacotes'];
             $eq['recebeu'][$mid] = ($eq['recebeu'][$mid] ?? 0) + (int)$e['pacotes'];
-            break 2;
+            continue 3;
         }
     }
     unset($m);
+    // entrega que estava sem motoboy
+    if (isset($semDono[$eid])) {
+        $e = $semDono[$eid]; unset($semDono[$eid], $e['_quad']);
+        $e['movida_de'] = 0; $pm[$mid]['entregas'][] = $e;
+        $eq['movidas'][] = ['entrega' => (int)$e['entrega'], 'de' => 0, 'para' => $mid, 'pacotes' => (int)$e['pacotes']];
+        $eq['recebeu'][$mid] = ($eq['recebeu'][$mid] ?? 0) + (int)$e['pacotes'];
+    }
 }
+unset($m);
 $erroDecisao = false;
 
 if (($_POST['acao'] ?? '') === 'confirmar' && csrf_ok() && $equilibrar && $pendentes) {
@@ -362,7 +373,7 @@ topo('Distribuir entregas', 'rotas', true);
               <td><input class="num-lim" type="number" min="1" inputmode="numeric" name="lim[<?= $mid ?>][max]" value="<?= e($l['max'] ?? '') ?>" placeholder="—"></td>
               <td>
                 <b class="<?= $abaixo || $acima ? 'txt-alerta' : '' ?>"><?= $final ?></b> pacotes
-                <?php if (!empty($eq['recebeu'][$mid])): ?><br><small class="mais">+<?= (int)$eq['recebeu'][$mid] ?> de <?= e(implode(', ', array_map(fn($de, $q) => ($nomeMoto[$de] ?? '?') . " ($q)", array_keys($origem[$mid]), $origem[$mid]))) ?></small><?php endif; ?>
+                <?php if (!empty($eq['recebeu'][$mid])): ?><br><small class="mais">+<?= (int)$eq['recebeu'][$mid] ?> de <?= e(implode(', ', array_map(fn($de, $q) => ($nomeMoto[$de] ?? ($de === 0 ? 'sem motoboy' : '?')) . " ($q)", array_keys($origem[$mid]), $origem[$mid]))) ?></small><?php endif; ?>
                 <?php if (!empty($eq['cedeu'][$mid])): ?><br><small class="menos">−<?= (int)$eq['cedeu'][$mid] ?> para outros</small><?php endif; ?>
                 <?php if ($mantido): ?><br><small class="txt-alerta">Acima do máximo: você escolheu manter</small>
                 <?php elseif (isset($acimaMax[$mid]) && $decisao[$mid] === '' && $equilibrar): ?><br><small class="txt-alerta">Acima do máximo: falta decidir (aviso no topo)</small>
@@ -400,7 +411,9 @@ function mostrarMotoDestino(sel) {
   const m = sel.parentNode.querySelector('.sel-moto-destino');
   m.hidden = !sem; if (!sem) m.value = '';
 }
-const grupos = <?= json_encode(array_values(array_map(fn($mid, $m) => ['mid' => (int)$mid, 'nome' => ($nomeMoto[$mid] ?? '?') . ' · ' . implode(' + ', $m['nomes']), 'cor' => $m['cor'], 'pts' => array_values(array_filter(array_map(fn($e) => $e['lat'] ? [(float)$e['lat'], (float)$e['lng'], (int)$e['entrega'], isset($e['movida_de']) ? 1 : 0, (int)$e['id'], $e['rua'] . ', ' . $e['numero_casa']] : null, $m['entregas'])))], array_keys($pm), $pm)), JSON_UNESCAPED_UNICODE) ?>;
+const grupos = <?= json_encode(array_merge(array_values(array_map(fn($mid, $m) => ['mid' => (int)$mid, 'nome' => ($nomeMoto[$mid] ?? '?') . ' · ' . implode(' + ', $m['nomes']), 'cor' => $m['cor'], 'pts' => array_values(array_filter(array_map(fn($e) => $e['lat'] ? [(float)$e['lat'], (float)$e['lng'], (int)$e['entrega'], isset($e['movida_de']) ? 1 : 0, (int)$e['id'], $e['rua'] . ', ' . $e['numero_casa']] : null, $m['entregas'])))], array_keys($pm), $pm)),
+  array_values(array_map(fn($nome, $lista) => ['mid' => 0, 'nome' => 'Sem motoboy · ' . $nome, 'cor' => '#A3AAA7', 'pts' => array_values(array_map(fn($e) => [(float)$e['lat'], (float)$e['lng'], (int)$e['entrega'], 0, (int)$e['id'], $e['rua'] . ', ' . $e['numero_casa']], array_filter($lista, fn($e) => $e['lat'] !== null)))],
+    array_keys($gs = array_reduce($semDono, function ($acc, $e) { $acc[$e['_quad']][] = $e; return $acc; }, [])), $gs))), JSON_UNESCAPED_UNICODE) ?>;
 <?php $escolhaQuad = []; foreach ($grupos as $g) if (str_starts_with($g['chave'], 'q')) $escolhaQuad[(int)substr($g['chave'], 1)] = array_map(fn($m) => $nomeMoto[$m] ?? '?', $g['motoboys']); ?>
 const quads = <?= json_encode(array_map(fn($q) => ['nome' => $q['nome'], 'cor' => $q['cor'], 'pontos' => $q['pontos'], 'motoboys' => $escolhaQuad[(int)$q['id']] ?? []], quadrantes_ativos()), JSON_UNESCAPED_UNICODE) ?>;
 const cd = <?= json_encode(cd_posicao()) ?>;
