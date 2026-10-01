@@ -187,7 +187,7 @@ $iniciadas = (int)$s->fetchColumn();
 
 topo('Distribuir entregas', 'rotas', true);
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=37">
+<link rel="stylesheet" href="assets/sacas.css?v=38">
 <link rel="stylesheet" href="assets/mapa.css?v=2">
 <script src="assets/mapa.js?v=2"></script>
 
