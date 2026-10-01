@@ -360,3 +360,7 @@ a.btn.corrigir { margin-top: .3rem; }
 @media (min-width: 1600px) {
   .distribuir { grid-template-columns: minmax(480px, 1fr) minmax(0, 1.9fr); }
 }
+.sel-aviso { width: 100%; font-weight: 700; font-size: .95rem; }
+.sel-aviso.ok { color: var(--marca); }
+.sel-aviso.alerta { color: #FFD666; }
+.painel-sel .btn.primario { background: var(--marca); color: #000; border-color: var(--marca); } .painel-sel .btn.primario:disabled { opacity: .45; }

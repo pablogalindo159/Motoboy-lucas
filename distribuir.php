@@ -190,7 +190,7 @@ $iniciadas = (int)$s->fetchColumn();
 
 topo('Distribuir entregas', 'rotas', true);
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=38">
+<link rel="stylesheet" href="assets/sacas.css?v=40">
 <link rel="stylesheet" href="assets/mapa.css?v=2">
 <script src="assets/mapa.js?v=2"></script>
 
@@ -409,9 +409,10 @@ topo('Distribuir entregas', 'rotas', true);
       <button type="button" class="btn pequeno" id="btn-sel" onclick="modoSelecao(!selecionando)">☑ Selecionar várias</button>
       <div class="painel-sel" id="painel-sel" hidden>
         <b id="sel-qtd">0 entregas selecionadas</b>
-        <select id="sel-moto"><option value="">Passar para…</option><?php foreach ($motoboys as $mm): ?><option value="<?= $mm['id'] ?>"><?= e($mm['nome']) ?></option><?php endforeach; ?></select>
+        <select id="sel-moto" onchange="atualizarPainelSel()"><option value="">Passar para…</option><?php foreach ($motoboys as $mm): ?><option value="<?= $mm['id'] ?>"><?= e($mm['nome']) ?></option><?php endforeach; ?></select>
         <button type="button" class="btn pequeno primario" id="sel-aplicar" onclick="aplicarSel()" disabled>Aplicar</button>
         <button type="button" class="btn pequeno" onclick="limparSel()">Limpar</button>
+        <span class="sel-aviso" id="sel-aviso"></span>
         <small>Toque nas bolinhas ou arraste no mapa para marcar várias.</small>
       </div>
     </div>
@@ -427,8 +428,8 @@ function mostrarMotoDestino(sel) {
   const m = sel.parentNode.querySelector('.sel-moto-destino');
   m.hidden = !sem; if (!sem) m.value = '';
 }
-const grupos = <?= json_encode(array_merge(array_values(array_map(fn($mid, $m) => ['mid' => (int)$mid, 'nome' => ($nomeMoto[$mid] ?? '?') . ' · ' . implode(' + ', $m['nomes']), 'cor' => $m['cor'], 'pts' => array_values(array_filter(array_map(fn($e) => $e['lat'] ? [(float)$e['lat'], (float)$e['lng'], (int)$e['entrega'], isset($e['movida_de']) ? 1 : 0, (int)$e['id'], $e['rua'] . ', ' . $e['numero_casa']] : null, $m['entregas'])))], array_keys($pm), $pm)),
-  array_values(array_map(fn($nome, $lista) => ['mid' => 0, 'nome' => 'Sem motoboy · ' . $nome, 'cor' => '#A3AAA7', 'pts' => array_values(array_map(fn($e) => [(float)$e['lat'], (float)$e['lng'], (int)$e['entrega'], 0, (int)$e['id'], $e['rua'] . ', ' . $e['numero_casa']], array_filter($lista, fn($e) => $e['lat'] !== null)))],
+const grupos = <?= json_encode(array_merge(array_values(array_map(fn($mid, $m) => ['mid' => (int)$mid, 'nome' => ($nomeMoto[$mid] ?? '?') . ' · ' . implode(' + ', $m['nomes']), 'cor' => $m['cor'], 'pts' => array_values(array_filter(array_map(fn($e) => $e['lat'] ? [(float)$e['lat'], (float)$e['lng'], (int)$e['entrega'], isset($e['movida_de']) ? 1 : 0, (int)$e['id'], $e['rua'] . ', ' . $e['numero_casa'], (int)$e['pacotes']] : null, $m['entregas'])))], array_keys($pm), $pm)),
+  array_values(array_map(fn($nome, $lista) => ['mid' => 0, 'nome' => 'Sem motoboy · ' . $nome, 'cor' => '#A3AAA7', 'pts' => array_values(array_map(fn($e) => [(float)$e['lat'], (float)$e['lng'], (int)$e['entrega'], 0, (int)$e['id'], $e['rua'] . ', ' . $e['numero_casa'], (int)$e['pacotes']], array_filter($lista, fn($e) => $e['lat'] !== null)))],
     array_keys($gs = array_reduce($semDono, function ($acc, $e) { $acc[$e['_quad']][] = $e; return $acc; }, [])), $gs))), JSON_UNESCAPED_UNICODE) ?>;
 <?php $escolhaQuad = []; foreach ($grupos as $g) if (str_starts_with($g['chave'], 'q')) $escolhaQuad[(int)substr($g['chave'], 1)] = array_map(fn($m) => $nomeMoto[$m] ?? '?', $g['motoboys']); ?>
 const quads = <?= json_encode(array_map(fn($q) => ['nome' => $q['nome'], 'cor' => $q['cor'], 'pontos' => $q['pontos'], 'motoboys' => $escolhaQuad[(int)$q['id']] ?? []], quadrantes_ativos()), JSON_UNESCAPED_UNICODE) ?>;
@@ -445,7 +446,13 @@ function urlDeVolta() {
   q.set('acao', 'previa');
   return 'distribuir.php?' + q.toString();
 }
-const MOTOS = <?= json_encode(array_values(array_map(fn($m) => ['id' => (int)$m['id'], 'nome' => $m['nome'], 'cor' => $pm[(int)$m['id']]['cor'] ?? PALETA[(int)$m['id'] % count(PALETA)]], $motoboys)), JSON_UNESCAPED_UNICODE) ?>;
+const MOTOS = <?= json_encode(array_values(array_map(fn($m) => ['id' => (int)$m['id'], 'nome' => $m['nome'], 'cor' => $pm[(int)$m['id']]['cor'] ?? PALETA[(int)$m['id'] % count(PALETA)],
+    'min' => isset($padroes[(int)$m['id']]['pacotes_min']) ? (int)$padroes[(int)$m['id']]['pacotes_min'] : null,
+    'max' => array_key_exists((int)$m['id'], $lim) ? $lim[(int)$m['id']]['max'] : (isset($padroes[(int)$m['id']]['pacotes_max']) ? (int)$padroes[(int)$m['id']]['pacotes_max'] : null),
+    'atual' => isset($pm[(int)$m['id']]) ? array_sum(array_column($pm[(int)$m['id']]['entregas'], 'pacotes')) : 0], $motoboys)), JSON_UNESCAPED_UNICODE) ?>;
+// quem está com cada entrega agora e quantos pacotes cada motoboy tem (contando o que ainda não foi salvo)
+const DONO = {}, DONO_ORIG = {}, PAC = {}, ATUAL = {};
+MOTOS.forEach(x => { ATUAL[x.id] = x.atual; });
 const FORCAR = <?= json_encode((object)$forcar) ?>;
 // passa a entrega para outro motoboy (fica valendo até criar as rotas)
 // ---- selecionar várias entregas e passar todas para um motoboy ----
@@ -455,8 +462,23 @@ function marcarSel(eid, on) {
   const mk = PINOS[eid]; if (!mk || !mk.getElement()) return;
   mk.getElement().querySelector('.np-pino').classList.toggle('selecionada', on);
   if (on) SEL.add(+eid); else SEL.delete(+eid);
-  document.getElementById('sel-qtd').textContent = SEL.size + (SEL.size === 1 ? ' entrega selecionada' : ' entregas selecionadas');
+  atualizarPainelSel();
+}
+function atualizarPainelSel() {
+  const pac = [...SEL].reduce((s, id) => s + (PAC[id] || 0), 0);
+  document.getElementById('sel-qtd').textContent = `${SEL.size} ${SEL.size === 1 ? 'entrega' : 'entregas'} · ${pac} ${pac === 1 ? 'pacote' : 'pacotes'} selecionado${pac === 1 ? '' : 's'}`;
   document.getElementById('sel-aplicar').disabled = !SEL.size;
+  // aviso (só avisa, não bloqueia): como o motoboy escolhido ficaria
+  const av = document.getElementById('sel-aviso'), mid = +document.getElementById('sel-moto').value;
+  const m = MOTOS.find(x => x.id === mid);
+  if (!m || !SEL.size) { av.textContent = ''; av.className = 'sel-aviso'; return; }
+  const ganha = [...SEL].reduce((s, id) => s + (DONO[id] === mid ? 0 : (PAC[id] || 0)), 0);
+  const fica = (ATUAL[mid] || 0) + ganha;
+  let txt = `${m.nome} ficaria com ${fica} pacotes`, cls = 'ok';
+  if (m.max !== null && fica > m.max) { txt = `⚠ ${txt} · passou do máximo (${m.max})`; cls = 'alerta'; }
+  else if (m.min !== null && fica < m.min) { txt = `⚠ ${txt} · ainda abaixo do mínimo (${m.min})`; cls = 'alerta'; }
+  else txt = `✓ ${txt}` + (m.max !== null ? ` (máximo ${m.max})` : '');
+  av.textContent = txt; av.className = 'sel-aviso ' + cls;
 }
 function modoSelecao(on) {
   selecionando = on;
@@ -473,7 +495,7 @@ function aplicarSel() {
   const mid = document.getElementById('sel-moto').value;
   if (!mid) { alert('Escolha o motoboy.'); return; }
   [...SEL].forEach(id => passarEntrega(id, mid, true));
-  limparSel();
+  limparSel(); atualizarPainelSel();
 }
 // arrastar no mapa (modo seleção): retângulo que seleciona tudo dentro
 mapa.on('mousedown', ev => { if (!selecionando) return; inicioRet = ev.latlng; });
@@ -496,6 +518,12 @@ function passarEntrega(eid, mid, varias) {
   const f = document.getElementById('f-dist'); if (!f) return;
   f.querySelectorAll(`input[name="forcar[${eid}]"]`).forEach(i => i.remove());
   if (mid) { const i = document.createElement('input'); i.type = 'hidden'; i.name = `forcar[${eid}]`; i.value = mid; f.appendChild(i); }
+  const novoDono = mid ? +mid : DONO_ORIG[eid];
+  if (DONO[eid] !== novoDono) {
+    if (DONO[eid]) ATUAL[DONO[eid]] = (ATUAL[DONO[eid]] || 0) - (PAC[eid] || 0);
+    if (novoDono) ATUAL[novoDono] = (ATUAL[novoDono] || 0) + (PAC[eid] || 0);
+    DONO[eid] = novoDono;
+  }
   const mk = PINOS[eid], para = MOTOS.find(x => x.id === +mid);
   if (mk && para) { const el = mk.getElement().querySelector('.np-pino'); el.style.setProperty('--c', para.cor); el.classList.add('remanejada'); }
   if (!varias) mapa.closePopup();
@@ -571,7 +599,7 @@ grupos.forEach(g => g.pts.forEach(p => { lim.push([p[0], p[1]]);
     + MOTOS.filter(x => x.id !== g.mid).map(x => `<option value="${x.id}">${escHtml(x.nome)}</option>`).join('') + `</select></label>`
     + `<small>Lugar errado? Arraste a bolinha até o lugar certo.</small>`
     + `<br><a class="btn pequeno" style="margin-top:.4rem" href="corrigir_local.php?id=${p[4]}&volta=${encodeURIComponent(urlDeVolta())}">📍 Corrigir com CEP</a>`);
-  PINOS[p[4]] = m;
+  PINOS[p[4]] = m; PAC[p[4]] = p[6] || 0; DONO[p[4]] = g.mid || 0; DONO_ORIG[p[4]] = g.mid || 0;
   m.on('click', () => { if (selecionando) { m.closePopup(); marcarSel(p[4], !SEL.has(p[4])); } });
   m.on('popupopen', () => { if (selecionando) m.closePopup(); });
   m.on('dragend', () => {
