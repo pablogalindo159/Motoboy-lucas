@@ -337,3 +337,15 @@ a.btn.corrigir { margin-top: .3rem; }
 .np-pino.pend-salvar { outline: 3px dashed #000; outline-offset: 2px; }
 .barra-pendente[hidden] { display: none; }
 .barra-pendente .btn.primario { background: var(--marca); color: #000; border-color: var(--marca); }
+
+/* selecionar várias entregas no mapa */
+.sel-barra { display: flex; flex-direction: column; gap: .4rem; margin-bottom: .5rem; }
+#btn-sel.ativo { background: #000; color: var(--marca); border-color: #000; }
+.painel-sel { display: flex; flex-wrap: wrap; gap: .4rem .6rem; align-items: center; background: #000; color: #fff; padding: .6rem .8rem; border-radius: 12px; }
+.painel-sel[hidden] { display: none; }
+.painel-sel b { color: var(--marca); }
+.painel-sel select { width: auto; }
+.painel-sel small { color: #C9CEC7; width: 100%; }
+.mapa-rota.selecionando, .selecionando { cursor: crosshair; }
+.np-pino.selecionada { outline: 3px solid #000; outline-offset: 2px; box-shadow: 0 0 0 6px var(--marca); }
+.painel-sel select { color: #000; background: #fff; }

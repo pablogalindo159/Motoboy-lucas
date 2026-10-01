@@ -125,7 +125,12 @@ foreach ($manuais as $mv) {
 }
 // entregas que você passou para outro motoboy tocando na bolinha do mapa
 $forcar = [];
-foreach ((array)($_REQUEST['forcar'] ?? []) as $eid => $mid) if ((int)$mid && isset($pm[(int)$mid])) $forcar[(int)$eid] = (int)$mid;
+foreach ((array)($_REQUEST['forcar'] ?? []) as $eid => $mid) if ((int)$mid && isset($nomeMoto[(int)$mid])) $forcar[(int)$eid] = (int)$mid;
+// motoboy sem quadrante que recebeu entregas escolhidas à mão: entra só com elas (fora do equilíbrio)
+foreach (array_unique($forcar) as $mid) if (!isset($pm[$mid])) {
+    $pm[$mid] = ['nomes' => ['entregas escolhidas'], 'entregas' => [], 'pac_quadrante' => 0, 'maior' => 0, 'cor' => PALETA[$mid % count(PALETA)], 'principal' => null, 'nome_principal' => 'Entregas escolhidas'];
+    $lim[$mid] = ['min' => null, 'max' => null];
+}
 foreach ($forcar as $eid => $mid) {
     foreach ($pm as $de => &$m) {
         if ($de === $mid) continue;
@@ -182,7 +187,7 @@ $iniciadas = (int)$s->fetchColumn();
 
 topo('Distribuir entregas', 'rotas', true);
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=35">
+<link rel="stylesheet" href="assets/sacas.css?v=37">
 <link rel="stylesheet" href="assets/mapa.css?v=2">
 <script src="assets/mapa.js?v=2"></script>
 
@@ -399,6 +404,16 @@ topo('Distribuir entregas', 'rotas', true);
     <p class="dica">Cada motoboy entrega na ordem do número da lista. Um motoboy pode ficar com mais de um quadrante: vira uma rota só. As caixas de cada um saem das entregas dele.</p>
   </form>
   <div>
+    <div class="sel-barra">
+      <button type="button" class="btn pequeno" id="btn-sel" onclick="modoSelecao(!selecionando)">☑ Selecionar várias</button>
+      <div class="painel-sel" id="painel-sel" hidden>
+        <b id="sel-qtd">0 entregas selecionadas</b>
+        <select id="sel-moto"><option value="">Passar para…</option><?php foreach ($motoboys as $mm): ?><option value="<?= $mm['id'] ?>"><?= e($mm['nome']) ?></option><?php endforeach; ?></select>
+        <button type="button" class="btn pequeno primario" id="sel-aplicar" onclick="aplicarSel()" disabled>Aplicar</button>
+        <button type="button" class="btn pequeno" onclick="limparSel()">Limpar</button>
+        <small>Toque nas bolinhas ou arraste no mapa para marcar várias.</small>
+      </div>
+    </div>
     <div id="mapa" class="mapa-rota mapa-dist"></div>
     <p class="dica"><?= count($entregas) ?> entregas · <?= array_sum(array_column($entregas, 'pacotes')) ?> pacotes<?= $eq['movidas'] ? ' · pontos com borda branca = remanejados' : '' ?></p>
   </div>
@@ -429,16 +444,60 @@ function urlDeVolta() {
   q.set('acao', 'previa');
   return 'distribuir.php?' + q.toString();
 }
-const MOTOS = <?= json_encode(array_values(array_map(fn($mid) => ['id' => (int)$mid, 'nome' => $nomeMoto[$mid] ?? '?', 'cor' => $pm[$mid]['cor'] ?? '#999'], array_keys($pm))), JSON_UNESCAPED_UNICODE) ?>;
+const MOTOS = <?= json_encode(array_values(array_map(fn($m) => ['id' => (int)$m['id'], 'nome' => $m['nome'], 'cor' => $pm[(int)$m['id']]['cor'] ?? PALETA[(int)$m['id'] % count(PALETA)]], $motoboys)), JSON_UNESCAPED_UNICODE) ?>;
 const FORCAR = <?= json_encode((object)$forcar) ?>;
 // passa a entrega para outro motoboy (fica valendo até criar as rotas)
-function passarEntrega(eid, mid) {
+// ---- selecionar várias entregas e passar todas para um motoboy ----
+let selecionando = false, retangulo = null, inicioRet = null;
+const SEL = new Set();
+function marcarSel(eid, on) {
+  const mk = PINOS[eid]; if (!mk || !mk.getElement()) return;
+  mk.getElement().querySelector('.np-pino').classList.toggle('selecionada', on);
+  if (on) SEL.add(+eid); else SEL.delete(+eid);
+  document.getElementById('sel-qtd').textContent = SEL.size + (SEL.size === 1 ? ' entrega selecionada' : ' entregas selecionadas');
+  document.getElementById('sel-aplicar').disabled = !SEL.size;
+}
+function modoSelecao(on) {
+  selecionando = on;
+  document.getElementById('painel-sel').hidden = !on;
+  document.getElementById('btn-sel').classList.toggle('ativo', on);
+  mapa.getContainer().classList.toggle('selecionando', on);
+  // no modo seleção as bolinhas não se arrastam (senão o retângulo mudaria o local sem querer)
+  Object.values(PINOS).forEach(mk => mk.dragging && (on ? mk.dragging.disable() : mk.dragging.enable()));
+  if (on) { mapa.dragging.disable(); mapa.boxZoom.disable(); mapa.closePopup(); }
+  else { mapa.dragging.enable(); mapa.boxZoom.enable(); limparSel(); }
+}
+function limparSel() { [...SEL].forEach(id => marcarSel(id, false)); }
+function aplicarSel() {
+  const mid = document.getElementById('sel-moto').value;
+  if (!mid) { alert('Escolha o motoboy.'); return; }
+  [...SEL].forEach(id => passarEntrega(id, mid, true));
+  limparSel();
+}
+// arrastar no mapa (modo seleção): retângulo que seleciona tudo dentro
+mapa.on('mousedown', ev => { if (!selecionando) return; inicioRet = ev.latlng; });
+mapa.on('mousemove', ev => {
+  if (!selecionando || !inicioRet) return;
+  const b = L.latLngBounds(inicioRet, ev.latlng);
+  if (retangulo) retangulo.setBounds(b); else retangulo = L.rectangle(b, { color: '#000', weight: 1.5, dashArray: '5 4', fillOpacity: .08, interactive: false }).addTo(mapa);
+});
+mapa.on('mouseup', ev => {
+  if (!selecionando || !inicioRet) return;
+  if (retangulo) {
+    const b = retangulo.getBounds();
+    Object.entries(PINOS).forEach(([id, mk]) => { if (b.contains(mk.getLatLng())) marcarSel(id, true); });
+    mapa.removeLayer(retangulo); retangulo = null;
+  }
+  inicioRet = null;
+});
+
+function passarEntrega(eid, mid, varias) {
   const f = document.getElementById('f-dist'); if (!f) return;
   f.querySelectorAll(`input[name="forcar[${eid}]"]`).forEach(i => i.remove());
   if (mid) { const i = document.createElement('input'); i.type = 'hidden'; i.name = `forcar[${eid}]`; i.value = mid; f.appendChild(i); }
   const mk = PINOS[eid], para = MOTOS.find(x => x.id === +mid);
   if (mk && para) { const el = mk.getElement().querySelector('.np-pino'); el.style.setProperty('--c', para.cor); el.classList.add('remanejada'); }
-  mapa.closePopup();
+  if (!varias) mapa.closePopup();
   marcarPendente('f' + eid);
 }
 // ---- alterações pendentes: só grava e recalcula no "Salvar" ----
@@ -512,6 +571,8 @@ grupos.forEach(g => g.pts.forEach(p => { lim.push([p[0], p[1]]);
     + `<small>Lugar errado? Arraste a bolinha até o lugar certo.</small>`
     + `<br><a class="btn pequeno" style="margin-top:.4rem" href="corrigir_local.php?id=${p[4]}&volta=${encodeURIComponent(urlDeVolta())}">📍 Corrigir com CEP</a>`);
   PINOS[p[4]] = m;
+  m.on('click', () => { if (selecionando) { m.closePopup(); marcarSel(p[4], !SEL.has(p[4])); } });
+  m.on('popupopen', () => { if (selecionando) m.closePopup(); });
   m.on('dragend', () => {
     const ll = m.getLatLng();
     LOCAIS[p[4]] = { lat: ll.lat, lng: ll.lng };
