@@ -171,7 +171,7 @@ $iniciadas = (int)$s->fetchColumn();
 
 topo('Distribuir entregas', 'rotas', true);
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=32">
+<link rel="stylesheet" href="assets/sacas.css?v=35">
 <link rel="stylesheet" href="assets/mapa.css?v=2">
 <script src="assets/mapa.js?v=2"></script>
 
@@ -229,13 +229,13 @@ topo('Distribuir entregas', 'rotas', true);
               <div class="achar-cep"><input placeholder="CEP" inputmode="numeric" maxlength="9" onkeydown="if (event.key === 'Enter') { event.preventDefault(); acharCep(<?= (int)$f['id'] ?>, this); }"><button type="button" class="btn pequeno" onclick="acharCep(<?= (int)$f['id'] ?>, this.previousElementSibling)">Achar</button>
                 <a href="#" onclick="this.href = 'corrigir_local.php?id=<?= (int)$f['id'] ?>&volta=' + encodeURIComponent(urlDeVolta())">📍 mapa</a><small class="res-cep"></small></div></td>
             <td><?php if ($f['zona_id'] !== null): ?>
-                <label class="aceitar"><input type="checkbox" class="chk-aceitar" form="f-dist" name="aceitar[]" value="<?= (int)$f['id'] ?>" <?= $ok ? 'checked' : '' ?> onchange="document.querySelector('#f-dist [value=previa]').click()">
+                <label class="aceitar"><input type="checkbox" class="chk-aceitar" form="f-dist" name="aceitar[]" value="<?= (int)$f['id'] ?>" <?= $ok ? 'checked' : '' ?> onchange="marcarPendente('ac<?= (int)$f['id'] ?>')">
                   <?= e($f['zona_perto']) ?> <small>(<?= $dist($f['dist_m']) ?>)</small></label>
               <?php else: ?><small>sem localização</small><?php endif; ?></td></tr>
         <?php endforeach; ?></tbody>
       </table></div>
       <?php if ($foraLista): ?>
-        <button type="button" class="btn pequeno" onclick="document.querySelectorAll('.chk-aceitar').forEach(c => c.checked = true); document.querySelector('#f-dist [value=previa]').click()">Aceitar todas: mandar para o quadrante mais próximo</button>
+        <button type="button" class="btn pequeno" onclick="document.querySelectorAll('.chk-aceitar').forEach(c => { if (!c.checked) { c.checked = true; marcarPendente('ac' + c.value); } })">Aceitar todas: mandar para o quadrante mais próximo</button>
       <?php endif; ?>
       <p class="dica">O endereço pode ter sido achado no lugar errado. Confira no mapa antes de aceitar.</p>
     </details>
@@ -416,25 +416,77 @@ function urlDeVolta() {
   q.set('acao', 'previa');
   return 'distribuir.php?' + q.toString();
 }
-const MOTOS = <?= json_encode(array_values(array_map(fn($mid) => ['id' => (int)$mid, 'nome' => $nomeMoto[$mid] ?? '?'], array_keys($pm))), JSON_UNESCAPED_UNICODE) ?>;
+const MOTOS = <?= json_encode(array_values(array_map(fn($mid) => ['id' => (int)$mid, 'nome' => $nomeMoto[$mid] ?? '?', 'cor' => $pm[$mid]['cor'] ?? '#999'], array_keys($pm))), JSON_UNESCAPED_UNICODE) ?>;
 const FORCAR = <?= json_encode((object)$forcar) ?>;
 // passa a entrega para outro motoboy (fica valendo até criar as rotas)
 function passarEntrega(eid, mid) {
   const f = document.getElementById('f-dist'); if (!f) return;
   f.querySelectorAll(`input[name="forcar[${eid}]"]`).forEach(i => i.remove());
   if (mid) { const i = document.createElement('input'); i.type = 'hidden'; i.name = `forcar[${eid}]`; i.value = mid; f.appendChild(i); }
-  f.querySelector('button[value=previa]').click();
+  const mk = PINOS[eid], para = MOTOS.find(x => x.id === +mid);
+  if (mk && para) { const el = mk.getElement().querySelector('.np-pino'); el.style.setProperty('--c', para.cor); el.classList.add('remanejada'); }
+  mapa.closePopup();
+  marcarPendente('f' + eid);
 }
+// ---- alterações pendentes: só grava e recalcula no "Salvar" ----
+const PINOS = {}, LOCAIS = {}, PEND = new Set();
+let salvando = false;
+function marcarPendente(chave) {
+  PEND.add(chave);
+  const bar = document.getElementById('barra-pendente');
+  bar.hidden = false;
+  bar.querySelector('b').textContent = PEND.size + (PEND.size > 1 ? ' alterações não salvas' : ' alteração não salva');
+}
+// grava os locais corrigidos (arrastar / CEP) de uma vez
+async function gravarLocais() {
+  const locais = Object.entries(LOCAIS).map(([id, l]) => ({ id: +id, ...l }));
+  if (!locais.length) return true;
+  const fd = new FormData(); fd.append('acao', 'salvar_locais'); fd.append('locais', JSON.stringify(locais));
+  const r = await fetch('api.php', { method: 'POST', body: fd, headers: { 'X-CSRF': <?= json_encode(csrf_token()) ?> } }).catch(() => null);
+  if (!r || !r.ok) { alert('Não foi possível salvar. Confira a internet e tente de novo.'); return false; }
+  for (const k in LOCAIS) delete LOCAIS[k];
+  return true;
+}
+async function salvarPendentes() {
+  const bt = document.getElementById('btn-salvar-pend'); bt.disabled = true; bt.textContent = 'Salvando…';
+  if (!(await gravarLocais())) { bt.disabled = false; bt.textContent = 'Salvar e recalcular'; return; }
+  salvando = true;
+  document.querySelector('#f-dist button[value=previa]').click();
+}
+function descartarPendentes() {
+  if (!confirm('Descartar as alterações não salvas?')) return;
+  salvando = true;
+  location.href = urlDeVoltaSemPendentes();
+}
+function urlDeVoltaSemPendentes() {
+  const f = document.getElementById('f-dist'), q = new URLSearchParams();
+  for (const [k, v] of new FormData(f)) if (k !== 'csrf' && k !== 'acao' && !(k.startsWith('forcar[') && PEND.has('f' + k.slice(7, -1))) && !(k === 'aceitar[]' && PEND.has('ac' + v))) q.append(k, v);
+  q.set('acao', 'previa'); return 'distribuir.php?' + q.toString();
+}
+window.addEventListener('beforeunload', e => { if (PEND.size && !salvando) { e.preventDefault(); e.returnValue = ''; } });
+// qualquer recálculo (ex.: trocar o motoboy de um card) grava antes os locais pendentes, para não perder
+document.addEventListener('submit', async ev => {
+  if (Object.keys(LOCAIS).length && !salvando) {
+    ev.preventDefault();
+    if (!(await gravarLocais())) return;
+    salvando = true;
+    ev.target.requestSubmit(ev.submitter || undefined);
+    return;
+  }
+  salvando = true;
+}, true);
 // achar pelo CEP (listas de cima): coloca no lugar, aprende o endereço e recalcula
 async function acharCep(eid, inp) {
   const res = inp.parentNode.querySelector('.res-cep'); res.textContent = ' buscando…'; res.className = 'res-cep';
-  const fd = new FormData(); fd.append('acao', 'localizar_entrega_cep'); fd.append('id', eid); fd.append('cep', inp.value);
+  const fd = new FormData(); fd.append('acao', 'localizar_entrega_cep'); fd.append('id', eid); fd.append('cep', inp.value); fd.append('so_buscar', '1');
   try {
     const r = await fetch('api.php', { method: 'POST', body: fd, headers: { 'X-CSRF': <?= json_encode(csrf_token()) ?> } });
     const j = await r.json();
     if (!r.ok) { res.textContent = ' ' + (j.erro || 'Não achei.'); res.className = 'res-cep txt-erro'; return; }
-    res.textContent = ` ✓ ${j.bairro || ''}`; res.className = 'res-cep txt-ok';
-    const b = document.querySelector('#f-dist button[value=previa]'); if (b) b.click();
+    res.textContent = ` ✓ achado (${j.bairro || j.rua}) · falta salvar`; res.className = 'res-cep txt-ok';
+    LOCAIS[eid] = { lat: j.lat, lng: j.lng, bairro: j.bairro || '' };
+    if (PINOS[eid]) PINOS[eid].setLatLng([j.lat, j.lng]);
+    marcarPendente('l' + eid);
   } catch (e) { res.textContent = ' Não foi possível buscar agora.'; res.className = 'res-cep txt-erro'; }
 }
 const escHtml = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -446,17 +498,21 @@ grupos.forEach(g => g.pts.forEach(p => { lim.push([p[0], p[1]]);
     + MOTOS.filter(x => x.id !== g.mid).map(x => `<option value="${x.id}">${escHtml(x.nome)}</option>`).join('') + `</select></label>`
     + `<small>Lugar errado? Arraste a bolinha até o lugar certo.</small>`
     + `<br><a class="btn pequeno" style="margin-top:.4rem" href="corrigir_local.php?id=${p[4]}&volta=${encodeURIComponent(urlDeVolta())}">📍 Corrigir com CEP</a>`);
-  m.on('dragend', async () => {
+  PINOS[p[4]] = m;
+  m.on('dragend', () => {
     const ll = m.getLatLng();
-    const fd = new FormData(); fd.append('acao', 'mover_entrega'); fd.append('id', p[4]); fd.append('lat', ll.lat); fd.append('lng', ll.lng);
-    const r = await fetch('api.php', { method: 'POST', body: fd, headers: { 'X-CSRF': <?= json_encode(csrf_token()) ?> } });
-    if (!r.ok) { alert('Não foi possível salvar a nova posição.'); return; }
-    // pode ter mudado de quadrante: recalcula a divisão
-    const b = document.querySelector('#f-dist button[value=previa]'); if (b) b.click();
+    LOCAIS[p[4]] = { lat: ll.lat, lng: ll.lng };
+    m.getElement().querySelector('.np-pino').classList.add('pend-salvar');
+    marcarPendente('l' + p[4]);
   });
 }));
 if (cd) { L.marker(cd, { icon: L.divIcon({ className: '', html: '<div class="mapa-cd">CD</div>', iconSize: [34, 24], iconAnchor: [17, 12] }) }).addTo(mapa); lim.push(cd); }
 if (lim.length) mapa.fitBounds(lim, { padding: [20, 20] });
 </script>
 <?php endif; ?>
+<div class="barra-pendente" id="barra-pendente" hidden>
+  <span>✏️ <b>0 alterações não salvas</b></span>
+  <button type="button" class="btn primario" id="btn-salvar-pend" onclick="salvarPendentes()">Salvar e recalcular</button>
+  <button type="button" class="btn" onclick="descartarPendentes()">Descartar</button>
+</div>
 <?php rodape();

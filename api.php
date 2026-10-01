@@ -69,8 +69,22 @@ case 'localizar_entrega_cep':
     $r = buscar_cep((string)($_POST['cep'] ?? ''), (string)$e['numero_casa']);
     if (!empty($r['erro'])) responder(['erro' => $r['erro']], 422);
     if (empty($r['lat'])) responder(['erro' => "CEP é de {$r['rua']} ({$r['bairro']}), mas não achei o ponto. Use o 📍 mapa."], 422);
-    aprender_local($e['rua'], (string)$e['numero_casa'], (float)$r['lat'], (float)$r['lng'], $r['bairro'] ?: null, $e['data']);
-    responder(['ok' => true, 'rua' => $r['rua'], 'bairro' => $r['bairro']]);
+    // só_buscar: devolve o ponto sem gravar (a distribuição grava tudo junto no "Salvar")
+    if (empty($_POST['so_buscar'])) aprender_local($e['rua'], (string)$e['numero_casa'], (float)$r['lat'], (float)$r['lng'], $r['bairro'] ?: null, $e['data']);
+    responder(['ok' => true, 'rua' => $r['rua'], 'bairro' => $r['bairro'], 'lat' => (float)$r['lat'], 'lng' => (float)$r['lng']]);
+
+// ---------- ADMIN: grava de uma vez os locais corrigidos na distribuição ----------
+case 'salvar_locais':
+    exigir('admin', true);
+    $lista = json_decode((string)($_POST['locais'] ?? '[]'), true) ?: [];
+    $s = db()->prepare("SELECT rua, numero_casa, data FROM entregas WHERE id = ?");
+    $n = 0;
+    foreach ($lista as $l) {
+        if (!is_numeric($l['lat'] ?? null) || !is_numeric($l['lng'] ?? null)) continue;
+        $s->execute([(int)($l['id'] ?? 0)]);
+        if ($e = $s->fetch()) { aprender_local($e['rua'], (string)$e['numero_casa'], (float)$l['lat'], (float)$l['lng'], ($l['bairro'] ?? '') ?: null, $e['data']); $n++; }
+    }
+    responder(['ok' => true, 'salvos' => $n]);
 
 // ---------- ADMIN: CEP -> endereço e ponto no mapa ----------
 case 'buscar_cep':
