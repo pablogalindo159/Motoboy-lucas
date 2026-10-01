@@ -364,3 +364,10 @@ a.btn.corrigir { margin-top: .3rem; }
 .sel-aviso.ok { color: var(--marca); }
 .sel-aviso.alerta { color: #FFD666; }
 .painel-sel .btn.primario { background: var(--marca); color: #000; border-color: var(--marca); } .painel-sel .btn.primario:disabled { opacity: .45; }
+
+/* Impressão: as bolinhas dos motoboys saem coloridas mesmo com "gráficos de fundo" desligado */
+.bolinha, .cx .bolinha, .cx-motos .bolinha { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+@media print {
+  .grade-caixas, .grade-caixas * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .cx .bolinha { border: 1px solid #000; }
+}
