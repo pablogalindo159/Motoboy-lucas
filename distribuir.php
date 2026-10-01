@@ -120,6 +120,23 @@ foreach ($manuais as $mv) {
     $eq['cedeu'][$mv['de']] = ($eq['cedeu'][$mv['de']] ?? 0) + $mv['pacotes'];
     $eq['recebeu'][$mv['para']] = ($eq['recebeu'][$mv['para']] ?? 0) + $mv['pacotes'];
 }
+// entregas que você passou para outro motoboy tocando na bolinha do mapa
+$forcar = [];
+foreach ((array)($_REQUEST['forcar'] ?? []) as $eid => $mid) if ((int)$mid && isset($pm[(int)$mid])) $forcar[(int)$eid] = (int)$mid;
+foreach ($forcar as $eid => $mid) {
+    foreach ($pm as $de => &$m) {
+        if ($de === $mid) continue;
+        foreach ($m['entregas'] as $k => $e) if ((int)$e['id'] === $eid) {
+            unset($m['entregas'][$k]); $m['entregas'] = array_values($m['entregas']);
+            $e['movida_de'] = $de; $pm[$mid]['entregas'][] = $e;
+            $eq['movidas'][] = ['entrega' => (int)$e['entrega'], 'de' => $de, 'para' => $mid, 'pacotes' => (int)$e['pacotes']];
+            $eq['cedeu'][$de] = ($eq['cedeu'][$de] ?? 0) + (int)$e['pacotes'];
+            $eq['recebeu'][$mid] = ($eq['recebeu'][$mid] ?? 0) + (int)$e['pacotes'];
+            break 2;
+        }
+    }
+    unset($m);
+}
 $erroDecisao = false;
 
 if (($_POST['acao'] ?? '') === 'confirmar' && csrf_ok() && $equilibrar && $pendentes) {
@@ -154,7 +171,7 @@ $iniciadas = (int)$s->fetchColumn();
 
 topo('Distribuir entregas', 'rotas', true);
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=30">
+<link rel="stylesheet" href="assets/sacas.css?v=32">
 <link rel="stylesheet" href="assets/mapa.css?v=2">
 <script src="assets/mapa.js?v=2"></script>
 
@@ -208,7 +225,9 @@ topo('Distribuir entregas', 'rotas', true);
         <tbody><?php foreach (array_merge($aceitasLista, $foraLista) as $f): $ok = in_array((int)$f['id'], $aceitas, true) && $f['zona_id'] !== null; ?>
           <tr class="<?= $ok ? 'aceita' : '' ?>"><td><b><?= (int)$f['entrega'] ?></b></td><td><?= e($f['rua']) ?>, <?= e($f['numero_casa']) ?></td><td><?= (int)$f['pacotes'] ?></td>
             <td><small class="<?= $ok ? '' : 'txt-erro' ?>"><?= e($f['motivo'] ?: 'Fora dos quadrantes') ?></small>
-              <?php if ($f['lat'] !== null): ?> <a href="https://www.google.com/maps?q=<?= e($f['lat']) ?>,<?= e($f['lng']) ?>" target="_blank">mapa</a><?php endif; ?></td>
+              <?php if ($f['lat'] !== null): ?> <a href="https://www.google.com/maps?q=<?= e($f['lat']) ?>,<?= e($f['lng']) ?>" target="_blank">ver</a><?php endif; ?>
+              <div class="achar-cep"><input placeholder="CEP" inputmode="numeric" maxlength="9" onkeydown="if (event.key === 'Enter') { event.preventDefault(); acharCep(<?= (int)$f['id'] ?>, this); }"><button type="button" class="btn pequeno" onclick="acharCep(<?= (int)$f['id'] ?>, this.previousElementSibling)">Achar</button>
+                <a href="#" onclick="this.href = 'corrigir_local.php?id=<?= (int)$f['id'] ?>&volta=' + encodeURIComponent(urlDeVolta())">📍 mapa</a><small class="res-cep"></small></div></td>
             <td><?php if ($f['zona_id'] !== null): ?>
                 <label class="aceitar"><input type="checkbox" class="chk-aceitar" form="f-dist" name="aceitar[]" value="<?= (int)$f['id'] ?>" <?= $ok ? 'checked' : '' ?> onchange="document.querySelector('#f-dist [value=previa]').click()">
                   <?= e($f['zona_perto']) ?> <small>(<?= $dist($f['dist_m']) ?>)</small></label>
@@ -222,12 +241,27 @@ topo('Distribuir entregas', 'rotas', true);
     </details>
   </div>
 <?php endif; ?>
-<?php if (!empty($avisos['sem_local'])): ?><p class="dica"><?= (int)$avisos['sem_local'] ?> entregas não foram achadas no mapa e seguem com as entregas de número vizinho.</p><?php endif; ?>
+<?php if (!empty($avisos['sem_local'])):
+    $s = db()->prepare("SELECT id, entrega, rua, numero_casa, pacotes FROM entregas WHERE data = ? AND lat IS NULL AND COALESCE(geo_status, '') <> 'fora_bairro' ORDER BY entrega");
+    $s->execute([$data]); $naoAchadas = $s->fetchAll(); ?>
+  <details class="aviso alerta nao-achadas">
+    <summary><b><?= count($naoAchadas) ?> entregas não foram achadas no mapa</b> e seguem com as entregas de número vizinho. Toque para achar pelo CEP.</summary>
+    <div class="tabela-wrap"><table class="tabela">
+      <thead><tr><th>Nº</th><th>Endereço</th><th>Pacotes</th><th>Achar</th></tr></thead>
+      <tbody><?php foreach ($naoAchadas as $f): ?>
+        <tr><td><b><?= (int)$f['entrega'] ?></b></td><td><?= e($f['rua']) ?>, <?= e($f['numero_casa']) ?></td><td><?= (int)$f['pacotes'] ?></td>
+          <td><div class="achar-cep"><input placeholder="CEP" inputmode="numeric" maxlength="9" onkeydown="if (event.key === 'Enter') { event.preventDefault(); acharCep(<?= (int)$f['id'] ?>, this); }"><button type="button" class="btn pequeno" onclick="acharCep(<?= (int)$f['id'] ?>, this.previousElementSibling)">Achar</button>
+            <a href="#" onclick="this.href = 'corrigir_local.php?id=<?= (int)$f['id'] ?>&volta=' + encodeURIComponent(urlDeVolta())">📍 mapa</a><small class="res-cep"></small></div></td></tr>
+      <?php endforeach; ?></tbody>
+    </table></div>
+  </details>
+<?php endif; ?>
 <?php if ($iniciadas): ?><div class="aviso erro"><?= $iniciadas ?> rotas deste dia já começaram (chegada no CD ou entrega marcada). Distribuir de novo apaga as rotas atuais do dia.</div><?php endif; ?>
 
 <?php if ($grupos): ?>
 <div class="duas-colunas distribuir">
   <form method="post" id="f-dist">
+    <?php foreach ($forcar as $eid => $mid): ?><input type="hidden" name="forcar[<?= $eid ?>]" value="<?= $mid ?>"><?php endforeach; ?>
     <?= csrf_field() ?>
     <input type="hidden" name="data" value="<?= e($data) ?>"><input type="hidden" name="modo" value="<?= e($modo) ?>">
     <?php foreach ($escolhidos as $id): ?><input type="hidden" name="moto[]" value="<?= $id ?>"><?php endforeach; ?>
@@ -366,7 +400,7 @@ function mostrarMotoDestino(sel) {
   const m = sel.parentNode.querySelector('.sel-moto-destino');
   m.hidden = !sem; if (!sem) m.value = '';
 }
-const grupos = <?= json_encode(array_values(array_map(fn($mid, $m) => ['nome' => ($nomeMoto[$mid] ?? '?') . ' · ' . implode(' + ', $m['nomes']), 'cor' => $m['cor'], 'pts' => array_values(array_filter(array_map(fn($e) => $e['lat'] ? [(float)$e['lat'], (float)$e['lng'], (int)$e['entrega'], isset($e['movida_de']) ? 1 : 0, (int)$e['id'], $e['rua'] . ', ' . $e['numero_casa']] : null, $m['entregas'])))], array_keys($pm), $pm)), JSON_UNESCAPED_UNICODE) ?>;
+const grupos = <?= json_encode(array_values(array_map(fn($mid, $m) => ['mid' => (int)$mid, 'nome' => ($nomeMoto[$mid] ?? '?') . ' · ' . implode(' + ', $m['nomes']), 'cor' => $m['cor'], 'pts' => array_values(array_filter(array_map(fn($e) => $e['lat'] ? [(float)$e['lat'], (float)$e['lng'], (int)$e['entrega'], isset($e['movida_de']) ? 1 : 0, (int)$e['id'], $e['rua'] . ', ' . $e['numero_casa']] : null, $m['entregas'])))], array_keys($pm), $pm)), JSON_UNESCAPED_UNICODE) ?>;
 <?php $escolhaQuad = []; foreach ($grupos as $g) if (str_starts_with($g['chave'], 'q')) $escolhaQuad[(int)substr($g['chave'], 1)] = array_map(fn($m) => $nomeMoto[$m] ?? '?', $g['motoboys']); ?>
 const quads = <?= json_encode(array_map(fn($q) => ['nome' => $q['nome'], 'cor' => $q['cor'], 'pontos' => $q['pontos'], 'motoboys' => $escolhaQuad[(int)$q['id']] ?? []], quadrantes_ativos()), JSON_UNESCAPED_UNICODE) ?>;
 const cd = <?= json_encode(cd_posicao()) ?>;
@@ -382,11 +416,35 @@ function urlDeVolta() {
   q.set('acao', 'previa');
   return 'distribuir.php?' + q.toString();
 }
+const MOTOS = <?= json_encode(array_values(array_map(fn($mid) => ['id' => (int)$mid, 'nome' => $nomeMoto[$mid] ?? '?'], array_keys($pm))), JSON_UNESCAPED_UNICODE) ?>;
+const FORCAR = <?= json_encode((object)$forcar) ?>;
+// passa a entrega para outro motoboy (fica valendo até criar as rotas)
+function passarEntrega(eid, mid) {
+  const f = document.getElementById('f-dist'); if (!f) return;
+  f.querySelectorAll(`input[name="forcar[${eid}]"]`).forEach(i => i.remove());
+  if (mid) { const i = document.createElement('input'); i.type = 'hidden'; i.name = `forcar[${eid}]`; i.value = mid; f.appendChild(i); }
+  f.querySelector('button[value=previa]').click();
+}
+// achar pelo CEP (listas de cima): coloca no lugar, aprende o endereço e recalcula
+async function acharCep(eid, inp) {
+  const res = inp.parentNode.querySelector('.res-cep'); res.textContent = ' buscando…'; res.className = 'res-cep';
+  const fd = new FormData(); fd.append('acao', 'localizar_entrega_cep'); fd.append('id', eid); fd.append('cep', inp.value);
+  try {
+    const r = await fetch('api.php', { method: 'POST', body: fd, headers: { 'X-CSRF': <?= json_encode(csrf_token()) ?> } });
+    const j = await r.json();
+    if (!r.ok) { res.textContent = ' ' + (j.erro || 'Não achei.'); res.className = 'res-cep txt-erro'; return; }
+    res.textContent = ` ✓ ${j.bairro || ''}`; res.className = 'res-cep txt-ok';
+    const b = document.querySelector('#f-dist button[value=previa]'); if (b) b.click();
+  } catch (e) { res.textContent = ' Não foi possível buscar agora.'; res.className = 'res-cep txt-erro'; }
+}
 const escHtml = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 grupos.forEach(g => g.pts.forEach(p => { lim.push([p[0], p[1]]);
   const m = NP.pino([p[0], p[1]], { num: p[2], cor: g.cor, extra: p[3] ? 'remanejada' : '', arrastar: true }).addTo(mapa);
   m.bindPopup(() => `<b>Entrega ${p[2]}</b> · ${escHtml(g.nome)}${p[3] ? ' (remanejada)' : ''}<br>${escHtml(p[5])}`
-    + `<br><small>Lugar errado? Arraste a bolinha até o lugar certo.</small>`
+    + `<label class="passar-pino">Passar para <select onchange="passarEntrega(${p[4]}, this.value)">`
+    + `<option value="">${FORCAR[p[4]] ? 'Automático (desfazer)' : '— manter —'}</option>`
+    + MOTOS.filter(x => x.id !== g.mid).map(x => `<option value="${x.id}">${escHtml(x.nome)}</option>`).join('') + `</select></label>`
+    + `<small>Lugar errado? Arraste a bolinha até o lugar certo.</small>`
     + `<br><a class="btn pequeno" style="margin-top:.4rem" href="corrigir_local.php?id=${p[4]}&volta=${encodeURIComponent(urlDeVolta())}">📍 Corrigir com CEP</a>`);
   m.on('dragend', async () => {
     const ll = m.getLatLng();

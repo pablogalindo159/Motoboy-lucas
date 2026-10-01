@@ -59,6 +59,19 @@ case 'mover_entrega':
     aprender_local($e['rua'], (string)$e['numero_casa'], (float)$_POST['lat'], (float)$_POST['lng'], null, $e['data']);
     responder(['ok' => true]);
 
+// ---------- ADMIN: achar a entrega pelo CEP (direto da distribuição): coloca no lugar e aprende ----------
+case 'localizar_entrega_cep':
+    exigir('admin', true);
+    $s = db()->prepare("SELECT * FROM entregas WHERE id = ?");
+    $s->execute([(int)($_POST['id'] ?? 0)]);
+    $e = $s->fetch();
+    if (!$e) responder(['erro' => 'Entrega não encontrada.'], 404);
+    $r = buscar_cep((string)($_POST['cep'] ?? ''), (string)$e['numero_casa']);
+    if (!empty($r['erro'])) responder(['erro' => $r['erro']], 422);
+    if (empty($r['lat'])) responder(['erro' => "CEP é de {$r['rua']} ({$r['bairro']}), mas não achei o ponto. Use o 📍 mapa."], 422);
+    aprender_local($e['rua'], (string)$e['numero_casa'], (float)$r['lat'], (float)$r['lng'], $r['bairro'] ?: null, $e['data']);
+    responder(['ok' => true, 'rua' => $r['rua'], 'bairro' => $r['bairro']]);
+
 // ---------- ADMIN: CEP -> endereço e ponto no mapa ----------
 case 'buscar_cep':
     exigir('admin', true);

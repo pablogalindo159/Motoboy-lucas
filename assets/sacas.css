@@ -323,3 +323,10 @@ a.btn.corrigir { margin-top: .3rem; }
 .busca-pend { margin: .4rem 0 .2rem; }
 #dlg-pacotes .contador { display: grid; grid-template-columns: 64px 1fr 64px; gap: .5rem; align-items: center; margin: .5rem 0; }
 #dlg-pacotes .contador input { text-align: center; font: 800 2rem/1 var(--fonte-placa); }
+.achar-cep { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; margin-top: .3rem; }
+.achar-cep input { width: 8.5rem; padding: .35rem .5rem; }
+.achar-cep .txt-ok { color: var(--verde); font-weight: 600; }
+.nao-achadas summary { cursor: pointer; }
+.nao-achadas .tabela-wrap { margin-top: .5rem; max-height: 320px; overflow: auto; }
+.passar-pino { display: block; margin: .4rem 0; font-size: .85rem; font-weight: 600; }
+.passar-pino select { display: block; width: 100%; margin-top: .2rem; padding: .3rem; }
