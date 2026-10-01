@@ -104,6 +104,9 @@ foreach ($acimaMax as $mid => $x) {
 }
 $pendentes = array_keys(array_filter($decisao, fn($d) => $d === ''));
 $limEq = $lim;
+// sem a regra do mínimo: quem fica abaixo dele não recebe entregas de outros quadrantes (só o máximo vale)
+foreach ($limEq as &$l) $l['min'] = null;
+unset($l);
 // "manter": fica exatamente com tudo do quadrante (não cede nem recebe)
 foreach ($decisao as $mid => $d) if ($d === 'manter') $limEq[$mid]['min'] = $limEq[$mid]['max'] = $pm[$mid]['pac_quadrante'];
 // "passar": as entregas mais perto da divisa vão para o motoboy do quadrante escolhido
@@ -165,8 +168,8 @@ if (($_POST['acao'] ?? '') === 'confirmar' && csrf_ok() && $equilibrar && $pende
         foreach ($grupos as $g) if ($g['chave'] !== 'fora') $up->execute([$g['motoboys'][0] ?? null, (int)substr($g['chave'], 1)]);
     }
     if (!empty($_POST['salvar_padrao'])) {
-        $up = db()->prepare("UPDATE usuarios SET pacotes_min = ?, pacotes_max = ? WHERE id = ?");
-        foreach ($lim as $mid => $l) $up->execute([$l['min'], $l['max'], $mid]);
+        $up = db()->prepare("UPDATE usuarios SET pacotes_max = ? WHERE id = ?");
+        foreach ($lim as $mid => $l) $up->execute([$l['max'], $mid]);
     }
     set_time_limit(180);
     try {
@@ -176,7 +179,7 @@ if (($_POST['acao'] ?? '') === 'confirmar' && csrf_ok() && $equilibrar && $pende
     }
     $semMoto = array_sum(array_map(fn($g) => $g['motoboys'] ? 0 : count($g['entregas']), $grupos));
     $movidos = array_sum(array_column($eq['movidas'], 'pacotes'));
-    flash(count($rotas) . ' rotas criadas na ordem da lista.' . ($movidos ? " $movidos pacotes remanejados para respeitar mínimo e máximo." : '') . ($semMoto ? " $semMoto entregas ficaram sem motoboy." : ''), $semMoto ? 'alerta' : 'ok');
+    flash(count($rotas) . ' rotas criadas na ordem da lista.' . ($movidos ? " $movidos pacotes remanejados para respeitar o máximo." : '') . ($semMoto ? " $semMoto entregas ficaram sem motoboy." : ''), $semMoto ? 'alerta' : 'ok');
     redirecionar('admin.php?data=' . urlencode($data));
 }
 
@@ -360,21 +363,20 @@ topo('Distribuir entregas', 'rotas', true);
     ?>
     <div class="cartao limites">
       <h2>Pacotes de cada motoboy hoje</h2>
-      <p class="dica">Ajuste o mínimo e o máximo do dia e toque em <b>Recalcular</b>. Quem ficar abaixo do mínimo recebe as entregas de outros quadrantes mais perto do quadrante principal dele; quem passar do máximo cede para quem tem espaço.</p>
+      <p class="dica">Ajuste o máximo do dia e toque em <b>Recalcular</b>. Quem passar do máximo cede para quem tem espaço. Quem ficar com poucos pacotes fica só com os dos quadrantes dele.</p>
       <div class="tabela-wrap">
         <table class="tabela">
-          <thead><tr><th>Motoboy</th><th>No quadrante</th><th>Mínimo</th><th>Máximo</th><th>Fica com</th></tr></thead>
+          <thead><tr><th>Motoboy</th><th>No quadrante</th><th>Máximo</th><th>Fica com</th></tr></thead>
           <tbody>
           <?php foreach ($pm as $mid => $m):
               $final = array_sum(array_column($m['entregas'], 'pacotes'));
               $l = $lim[$mid];
-              $abaixo = $l['min'] !== null && $final < $l['min'];
+              $abaixo = false; // mínimo não é mais usado na distribuição
               $acima = $l['max'] !== null && $final > $l['max'] && ($decisao[$mid] ?? '') !== 'manter';
               $mantido = ($decisao[$mid] ?? '') === 'manter'; ?>
             <tr>
               <td><span class="bolinha" style="background:<?= e($m['cor']) ?>"></span><b><?= e($nomeMoto[$mid] ?? '?') ?></b><br><small><?= e(implode(' + ', $m['nomes'])) ?></small></td>
               <td><?= (int)$m['pac_quadrante'] ?></td>
-              <td><input class="num-lim" type="number" min="0" inputmode="numeric" name="lim[<?= $mid ?>][min]" value="<?= e($l['min'] ?? '') ?>" placeholder="—"></td>
               <td><input class="num-lim" type="number" min="1" inputmode="numeric" name="lim[<?= $mid ?>][max]" value="<?= e($l['max'] ?? '') ?>" placeholder="—"></td>
               <td>
                 <b class="<?= $abaixo || $acima ? 'txt-alerta' : '' ?>"><?= $final ?></b> pacotes
@@ -382,7 +384,6 @@ topo('Distribuir entregas', 'rotas', true);
                 <?php if (!empty($eq['cedeu'][$mid])): ?><br><small class="menos">−<?= (int)$eq['cedeu'][$mid] ?> para outros</small><?php endif; ?>
                 <?php if ($mantido): ?><br><small class="txt-alerta">Acima do máximo: você escolheu manter</small>
                 <?php elseif (isset($acimaMax[$mid]) && $decisao[$mid] === '' && $equilibrar): ?><br><small class="txt-alerta">Acima do máximo: falta decidir (aviso no topo)</small>
-                <?php elseif ($abaixo): ?><br><small class="txt-alerta">Não deu para chegar ao mínimo</small>
                 <?php elseif ($acima): ?><br><small class="txt-alerta">Ninguém com espaço para receber o excesso</small><?php endif; ?>
               </td>
             </tr>
@@ -391,8 +392,8 @@ topo('Distribuir entregas', 'rotas', true);
         </table>
       </div>
       <input type="hidden" name="equilibrar" value="0">
-      <label class="lembrar"><input type="checkbox" name="equilibrar" value="1" <?= $equilibrar ? 'checked' : '' ?>> Equilibrar pelo mínimo e máximo</label>
-      <label class="lembrar"><input type="checkbox" name="salvar_padrao" value="1"> Salvar estes mínimos e máximos como padrão de cada motoboy</label>
+      <label class="lembrar"><input type="checkbox" name="equilibrar" value="1" <?= $equilibrar ? 'checked' : '' ?>> Equilibrar pelo máximo</label>
+      <label class="lembrar"><input type="checkbox" name="salvar_padrao" value="1"> Salvar estes máximos como padrão de cada motoboy</label>
     </div>
     <?php endif; ?>
 
