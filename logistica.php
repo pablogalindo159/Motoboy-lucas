@@ -1459,3 +1459,28 @@ function garantir_schema_v17(): void {
     @touch($flag);
 }
 garantir_schema_v17();
+
+/** Nome da cor em português (para imprimir junto da bolinha). Paleta com nome exato; outras cores, o nome da mais parecida. */
+function nome_cor(?string $hex): string {
+    static $nomes = [
+        '#8CF20A' => 'verde-limão', '#00B0F0' => 'azul-claro', '#FF0066' => 'rosa-choque', '#FFC000' => 'amarelo',
+        '#9B59FF' => 'roxo', '#00C49A' => 'verde-água', '#FF6A00' => 'laranja', '#1F5FA8' => 'azul',
+        '#D60093' => 'magenta', '#7A5C00' => 'marrom', '#00FFFF' => 'ciano', '#B8352A' => 'vermelho',
+        '#5E8C00' => 'verde-oliva', '#FF99CC' => 'rosa-claro', '#2F5597' => 'azul-escuro', '#BFBFBF' => 'cinza',
+        // referências extras para cores fora da paleta
+        '#000000' => 'preto', '#FFFFFF' => 'branco', '#00A651' => 'verde', '#006400' => 'verde-escuro',
+        '#C8A2C8' => 'lilás', '#800020' => 'vinho', '#F5DEB3' => 'bege', '#FFFF00' => 'amarelo', '#FF0000' => 'vermelho',
+        '#0000FF' => 'azul', '#808080' => 'cinza', '#A52A2A' => 'marrom', '#FFA500' => 'laranja', '#800080' => 'roxo',
+    ];
+    $h = strtoupper(trim((string)$hex));
+    if (!preg_match('/^#[0-9A-F]{6}$/', $h)) return '';
+    if (isset($nomes[$h])) return $nomes[$h];
+    $rgb = fn($x) => [hexdec(substr($x, 1, 2)), hexdec(substr($x, 3, 2)), hexdec(substr($x, 5, 2))];
+    [$r, $g, $b] = $rgb($h); $melhor = ''; $dm = INF;
+    foreach ($nomes as $ref => $nome) {
+        [$r2, $g2, $b2] = $rgb($ref);
+        $d = 2 * ($r - $r2) ** 2 + 4 * ($g - $g2) ** 2 + 3 * ($b - $b2) ** 2; // pesos aproximados da visão
+        if ($d < $dm) { $dm = $d; $melhor = $nome; }
+    }
+    return $melhor;
+}

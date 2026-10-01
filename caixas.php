@@ -27,7 +27,7 @@ $totPac = array_sum(array_column($caixas, 'pacotes'));
 
 topo('Caixas do dia', 'rotas');
 ?>
-<link rel="stylesheet" href="assets/sacas.css?v=41">
+<link rel="stylesheet" href="assets/sacas.css?v=42">
 <div class="cabecalho-rota">
   <div>
     <a href="rotas.php?data=<?= e($data) ?>" class="voltar nao-imprimir">← Rotas</a>
@@ -60,7 +60,7 @@ topo('Caixas do dia', 'rotas');
       <span class="cx-pac"><?= (int)$c['pacotes'] ?> pct</span>
     </header>
     <div class="cx-motos">
-      <?php foreach ($c['motos'] as $m): ?><span><span class="bolinha" style="background:<?= e($m['cor']) ?>"></span><?= e($m['nome']) ?></span><?php endforeach; ?>
+      <?php foreach ($c['motos'] as $m): ?><span><span class="bolinha" style="background:<?= e($m['cor']) ?>"></span><?= e($m['nome']) ?><?php if ($n = nome_cor($m['cor'])): ?> <small class="cor-nome"><?= e($n) ?></small><?php endif; ?></span><?php endforeach; ?>
       <?php if ($dividida): ?><b class="txt-alerta">dividida</b><?php endif; ?>
     </div>
     <ol>
@@ -69,7 +69,7 @@ topo('Caixas do dia', 'rotas');
           <b><?= (int)$it['entrega'] ?></b>
           <span class="cx-end" title="<?= e($it['rua'] . ', ' . $it['numero_casa']) ?>"><?= e($it['rua']) ?>, <?= e($it['numero_casa']) ?></span>
           <span class="cx-q"><?= (int)$it['pacotes'] ?> pct</span>
-          <?php if ($dividida): ?><span class="bolinha" title="<?= e($it['motoboy'] ?? 'Sem motoboy') ?>" style="background:<?= e($it['cor'] ?: '#BBBBBB') ?>"></span><?php endif; ?>
+          <?php if ($dividida): ?><span class="cx-cor" title="<?= e($it['motoboy'] ?? 'Sem motoboy') ?>"><span class="bolinha" style="background:<?= e($it['cor'] ?: '#BBBBBB') ?>"></span><small><?= e($it['cor'] ? nome_cor($it['cor']) : 'sem motoboy') ?></small></span><?php endif; ?>
         </li>
       <?php endforeach; ?>
     </ol>

@@ -371,3 +371,7 @@ a.btn.corrigir { margin-top: .3rem; }
   .grade-caixas, .grade-caixas * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .cx .bolinha { border: 1px solid #000; }
 }
+.cor-nome { font-weight: 500; color: var(--suave); font-size: .78rem; }
+.cx-cor { display: inline-flex; align-items: center; gap: .25rem; white-space: nowrap; }
+.cx-cor small { font-size: .74rem; color: var(--suave); }
+@media print { .cor-nome, .cx-cor small { color: #000; } }
